@@ -56,6 +56,19 @@ Proof.
   intros; unfold duration; lia.
 Qed.
 
+(* WARNING: duration uses nat subtraction. Calling duration t2 t1 when t2 > t1
+   silently returns 0, not a negative value. Always ensure t1 <= t2. *)
+Lemma duration_reversed_zero : forall t1 t2, t2 <= t1 -> duration t1 t2 = 0.
+Proof.
+  intros; unfold duration; lia.
+Qed.
+
+Lemma duration_order_matters : forall t1 t2,
+  t1 < t2 -> duration t1 t2 > 0 /\ duration t2 t1 = 0.
+Proof.
+  intros; unfold duration; split; lia.
+Qed.
+
 (* =============================================================================
    Logistics and travel
    ============================================================================= *)
@@ -241,8 +254,10 @@ Record timeline := {
   t_landing : time;
   t_fulford : time;
   t_york_taken : time;
-  t_march_north_start : time;
-  t_march_north_end : time;
+  t_london_depart : time;
+  t_york_arrive : time;
+  t_approach_start : time;
+  t_approach_end : time;
   t_bridge_defense : time;
   t_stamford_start : time;
   t_stamford_end : time;
@@ -267,9 +282,10 @@ Definition sorted_by_time (evs : list event) : Prop :=
 Record chronology (T : timeline) : Prop := {
   landing_before_fulford : t_landing T < t_fulford T;
   fulford_before_york : t_fulford T < t_york_taken T;
-  york_before_march_north_end : t_york_taken T <= t_march_north_end T;
-  march_north_start_before_end : t_march_north_start T < t_march_north_end T;
-  march_north_end_before_bridge : t_march_north_end T <= t_bridge_defense T;
+  london_depart_before_york : t_london_depart T < t_york_arrive T;
+  york_before_approach : t_york_taken T <= t_approach_start T;
+  approach_start_before_end : t_approach_start T < t_approach_end T;
+  approach_end_before_bridge : t_approach_end T <= t_bridge_defense T;
   bridge_before_stamford : t_bridge_defense T <= t_stamford_start T;
   stamford_start_before_end : t_stamford_start T < t_stamford_end T;
   stamford_end_before_hardrada : t_stamford_end T <= t_hardrada_fall T;
@@ -909,8 +925,10 @@ Definition T_sep25 : timeline := {|
   t_landing := t_of d_sep18 12 0;        (* Norwegian fleet lands at Riccall, Sep 18 *)
   t_fulford := t_of d_sep20 9 0;         (* Battle of Fulford, Sep 20 *)
   t_york_taken := t_of d_sep24 12 0;     (* York submits, Sep 24 *)
-  t_march_north_start := t_of d_sep18 18 0;  (* Harold departs London, ~Sep 18 evening *)
-  t_march_north_end := t_of d_sep25 8 0;     (* Harold reaches Tadcaster/Stamford area *)
+  t_london_depart := t_of d_sep18 18 0;      (* Harold departs London, ~Sep 18 evening. *)
+  t_york_arrive := t_of d_sep24 18 0;        (* Harold reaches York area, ~Sep 24 evening. *)
+  t_approach_start := t_of d_sep25 6 0;      (* Final approach from Tadcaster begins at dawn. *)
+  t_approach_end := t_of d_sep25 8 0;        (* Harold reaches Stamford Bridge area. *)
   t_bridge_defense := phase_start BridgeHold;
   t_stamford_start := phase_start ShieldWall;
   t_stamford_end := phase_end Rout;
@@ -936,12 +954,15 @@ Proof.
   - vm_compute; lia.
   - vm_compute; lia.
   - vm_compute; lia.
+  - vm_compute; lia.
 Qed.
 
 Definition events_T_sep25 : list event :=
   [ {| e_name := Landing; e_time := t_landing T_sep25; e_loc := Riccall; e_actor := NorwegianHost |};
+    {| e_name := MarchNorthBegins; e_time := t_london_depart T_sep25; e_loc := London; e_actor := EnglishHost |};
     {| e_name := FulfordBattle; e_time := t_fulford T_sep25; e_loc := Fulford; e_actor := NorwegianHost |};
     {| e_name := YorkTaken; e_time := t_york_taken T_sep25; e_loc := York; e_actor := NorwegianHost |};
+    {| e_name := MarchNorthEnds; e_time := t_approach_end T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
     {| e_name := BridgeDefenseBegins; e_time := t_bridge_defense T_sep25; e_loc := StamfordBridge; e_actor := NorwegianHost |};
     {| e_name := StamfordBattleBegins; e_time := t_stamford_start T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
     {| e_name := HardradaFalls; e_time := t_hardrada_fall T_sep25; e_loc := StamfordBridge; e_actor := Hardrada |};
