@@ -820,6 +820,56 @@ Lemma bridge_delay_after_shieldwall :
 Proof. vm_compute; lia. Qed.
 
 (* =============================================================================
+   Robustness: bridge bottleneck across crossing rates
+   ============================================================================= *)
+
+Definition crossing_rate_low : nat := 5.
+Definition crossing_rate_high : nat := 20.
+
+Lemma div_ge : forall a b q,
+  b > 0 -> q * b <= a -> q <= a / b.
+Proof.
+  intros a b q Hb Hle.
+  pose proof (Nat.div_mod_eq a b).
+  pose proof (Nat.mod_bound_pos a b ltac:(lia) ltac:(lia)).
+  assert (q * b <= a / b * b + a mod b) by lia.
+  destruct (Nat.le_gt_cases q (a / b)) as [|Hgt]; [lia|].
+  assert (a / b + 1 <= q) by lia.
+  assert ((a / b + 1) * b <= q * b) by (apply Nat.mul_le_mono_r; lia).
+  nia.
+Qed.
+
+Lemma bridge_bottleneck_duration_lower_bound : forall r,
+  crossing_rate_low <= S r -> S r <= crossing_rate_high ->
+  crossing_minutes (host_west norse_split) r >= 150.
+Proof.
+  intros r Hlo Hhi.
+  unfold crossing_rate_low, crossing_rate_high in *.
+  unfold crossing_minutes, crossing_rate, ceil_div.
+  assert (Hw : host_west norse_split = 150 * 20) by (vm_compute; reflexivity).
+  rewrite Hw.
+  assert (H1 : 150 <= 150 * 20 / S r).
+  { apply div_ge; [lia|].
+    apply Nat.mul_le_mono_l. lia. }
+  assert (H2 : 150 * 20 / S r <= (150 * 20 + S r - 1) / S r).
+  { apply Nat.div_le_mono; lia. }
+  lia.
+Qed.
+
+Theorem bridge_incomplete_at_shieldwall_robust : forall r,
+  crossing_rate_low <= S r -> S r <= crossing_rate_high ->
+  phase_start ShieldWall <
+    crossing_complete_time (host_west norse_split) r (phase_start BridgeHold).
+Proof.
+  intros r Hlo Hhi.
+  unfold crossing_complete_time.
+  pose proof (bridge_bottleneck_duration_lower_bound r Hlo Hhi).
+  assert (Hps : phase_start ShieldWall = phase_start BridgeHold + 120)
+    by (vm_compute; reflexivity).
+  lia.
+Qed.
+
+(* =============================================================================
    Hastings constraint
    ============================================================================= *)
 
@@ -1067,6 +1117,47 @@ Proof.
     by (vm_compute; reflexivity).
   lia.
 Qed.
+
+(* =============================================================================
+   Fatigue model: degraded march speed after Stamford Bridge
+   ============================================================================= *)
+
+Definition fatigued_speed_low : nat := 15.
+Definition fatigued_speed_high : nat := 25.
+
+Lemma fatigued_speed_low_pos : fatigued_speed_low > 0.
+Proof. unfold fatigued_speed_low; lia. Qed.
+
+Theorem hastings_reachable_fatigued :
+  travel_days miles_Stamford_Hastings fatigued_speed_low <= d_oct14 - d_sep25.
+Proof. vm_compute; lia. Qed.
+
+Theorem hastings_reachable_all_fatigued_speeds : forall s,
+  fatigued_speed_low <= s -> s <= fatigued_speed_high ->
+  travel_days miles_Stamford_Hastings s <= d_oct14 - d_sep25.
+Proof.
+  intros s Hlo Hhi.
+  unfold travel_days.
+  transitivity (ceil_div miles_Stamford_Hastings fatigued_speed_low).
+  - apply ceil_div_anti_mono; unfold fatigued_speed_low in *; lia.
+  - vm_compute; lia.
+Qed.
+
+Definition fatigue_penalty : nat := harold_speed_forced - fatigued_speed_low.
+
+Lemma fatigue_penalty_value : fatigue_penalty = 15.
+Proof. vm_compute; reflexivity. Qed.
+
+Definition fatigued_march_days : nat :=
+  travel_days miles_Stamford_Hastings fatigued_speed_low.
+
+Lemma fatigued_march_days_value : fatigued_march_days = 14.
+Proof. vm_compute; reflexivity. Qed.
+
+Definition fatigued_slack : nat := (d_oct14 - d_sep25) - fatigued_march_days.
+
+Lemma fatigued_slack_value : fatigued_slack = 5.
+Proof. vm_compute; reflexivity. Qed.
 
 (* =============================================================================
    Derived narrative theorems
