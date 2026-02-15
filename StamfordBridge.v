@@ -114,23 +114,42 @@ Inductive location :=
 
 Definition dist (a b : location) : nat :=
   match a, b with
-  | London, York => 190
-  | York, London => 190
-  | York, Fulford => 2
-  | Fulford, York => 2
-  | York, Riccall => 8
-  | Riccall, York => 8
-  | York, Tadcaster => 10
-  | Tadcaster, York => 10
-  | York, StamfordBridge => 10
-  | StamfordBridge, York => 10
-  | Riccall, StamfordBridge => 12
-  | StamfordBridge, Riccall => 12
-  | StamfordBridge, Derwent => 1
-  | Derwent, StamfordBridge => 1
-  | StamfordBridge, Hastings => 210
-  | Hastings, StamfordBridge => 210
-  | _, _ => 0
+  (* identity *)
+  | London, London => 0 | York, York => 0 | StamfordBridge, StamfordBridge => 0
+  | Hastings, Hastings => 0 | Tadcaster, Tadcaster => 0 | Derwent, Derwent => 0
+  | Riccall, Riccall => 0 | Fulford, Fulford => 0 | NorthSea, NorthSea => 0
+  (* direct edges *)
+  | London, York | York, London => 190
+  | York, Fulford | Fulford, York => 2
+  | York, Riccall | Riccall, York => 8
+  | York, Tadcaster | Tadcaster, York => 10
+  | York, StamfordBridge | StamfordBridge, York => 10
+  | Riccall, StamfordBridge | StamfordBridge, Riccall => 12
+  | StamfordBridge, Derwent | Derwent, StamfordBridge => 1
+  | StamfordBridge, Hastings | Hastings, StamfordBridge => 210
+  (* shortest paths (Mathematica-computed) *)
+  | London, StamfordBridge | StamfordBridge, London => 200
+  | London, Hastings | Hastings, London => 410
+  | London, Tadcaster | Tadcaster, London => 200
+  | London, Derwent | Derwent, London => 201
+  | London, Riccall | Riccall, London => 198
+  | London, Fulford | Fulford, London => 192
+  | York, Hastings | Hastings, York => 220
+  | York, Derwent | Derwent, York => 11
+  | Tadcaster, StamfordBridge | StamfordBridge, Tadcaster => 20
+  | Tadcaster, Hastings | Hastings, Tadcaster => 230
+  | Tadcaster, Derwent | Derwent, Tadcaster => 21
+  | Tadcaster, Riccall | Riccall, Tadcaster => 18
+  | Tadcaster, Fulford | Fulford, Tadcaster => 12
+  | Derwent, Hastings | Hastings, Derwent => 211
+  | Derwent, Riccall | Riccall, Derwent => 13
+  | Derwent, Fulford | Fulford, Derwent => 13
+  | Riccall, Fulford | Fulford, Riccall => 10
+  | Riccall, Hastings | Hastings, Riccall => 222
+  | Fulford, StamfordBridge | StamfordBridge, Fulford => 12
+  | Fulford, Hastings | Hastings, Fulford => 222
+  (* NorthSea: conventional sea distance, satisfies triangle inequality *)
+  | NorthSea, _ | _, NorthSea => 1000
   end.
 
 Lemma dist_sym : forall a b, dist a b = dist b a.
@@ -139,15 +158,22 @@ Proof. intros a b; destruct a, b; reflexivity. Qed.
 Lemma dist_zero : forall a, dist a a = 0.
 Proof. intros a; destruct a; reflexivity. Qed.
 
+Lemma dist_triangle : forall a b c,
+  dist a c <= dist a b + dist b c.
+Proof. intros a b c; destruct a, b, c; vm_compute; lia. Qed.
+
 (* =============================================================================
-   Calendar anchors (days since Sep 25, 1066)
+   Calendar anchors (days since Sep 1, 1066)
    ============================================================================= *)
 
-Definition d_sep25 : day := 0.
-Definition d_sep26 : day := 1.
-Definition d_sep27 : day := 2.
-Definition d_oct01 : day := 6.
-Definition d_oct14 : day := 19.
+Definition d_sep18 : day := 17.  (* Norwegian fleet lands at Riccall *)
+Definition d_sep20 : day := 19.  (* Battle of Fulford *)
+Definition d_sep24 : day := 23.  (* York submits *)
+Definition d_sep25 : day := 24.  (* Battle of Stamford Bridge *)
+Definition d_sep26 : day := 25.
+Definition d_sep27 : day := 26.
+Definition d_oct01 : day := 30.
+Definition d_oct14 : day := 43.
 
 Definition t_sep25_noon : time := t_of d_sep25 12 0.
 Definition t_sep25_evening : time := t_of d_sep25 18 0.
@@ -155,8 +181,11 @@ Definition t_oct14_dawn : time := t_of d_oct14 6 0.
 Definition t_oct14_morning : time := t_of d_oct14 9 0.
 
 Lemma day_ordering :
+  d_sep18 < d_sep20 /\ d_sep20 < d_sep24 /\ d_sep24 < d_sep25 /\
   d_sep25 < d_sep26 /\ d_sep26 < d_sep27 /\ d_sep27 < d_oct01 /\ d_oct01 < d_oct14.
-Proof. unfold d_sep25, d_sep26, d_sep27, d_oct01, d_oct14; lia. Qed.
+Proof.
+  unfold d_sep18, d_sep20, d_sep24, d_sep25, d_sep26, d_sep27, d_oct01, d_oct14; lia.
+Qed.
 
 Lemma sep25_before_oct14 : t_sep25_noon < t_oct14_dawn.
 Proof.
@@ -411,7 +440,7 @@ Lemma march_total_minutes :
 Proof. vm_compute; reflexivity. Qed.
 
 Definition stamford_window_slack_days : nat :=
-  d_oct14 - travel_days miles_Stamford_Hastings harold_speed_forced.
+  (d_oct14 - d_sep25) - travel_days miles_Stamford_Hastings harold_speed_forced.
 
 Lemma stamford_window_slack_days_value : stamford_window_slack_days = 12.
 Proof. vm_compute; reflexivity. Qed.
@@ -677,20 +706,22 @@ Proof. vm_compute; lia. Qed.
 
 Definition bridge_defense_start : time := phase_start BridgeHold.
 
-Definition bridge_crossing_rate0 : nat := 9. (* 10 troops/min *)
-Definition bridge_crossing_rate : nat := S bridge_crossing_rate0.
+Definition bridge_crossing_rate0 : nat := 9. (* yields 10 troops/min *)
 
+(* Instantiate parameterized Bridge section *)
 Definition bridge_crossing_minutes : nat :=
-  ceil_div (host_west norse_split) bridge_crossing_rate.
+  crossing_minutes (host_west norse_split) bridge_crossing_rate0.
 
 Definition bridge_clear_time : time :=
-  bridge_defense_start + bridge_crossing_minutes.
+  crossing_complete_time (host_west norse_split) bridge_crossing_rate0 bridge_defense_start.
 
 Definition bridge_troops_crossed (t : time) : nat :=
-  Nat.min (host_west norse_split) (bridge_crossing_rate * (t - bridge_defense_start)).
+  troops_crossed (host_west norse_split) bridge_crossing_rate0 bridge_defense_start t.
 
 Definition bridge_troops_remaining (t : time) : nat :=
-  host_west norse_split - bridge_troops_crossed t.
+  troops_remaining (host_west norse_split) bridge_crossing_rate0 bridge_defense_start t.
+
+Definition bridge_crossing_rate : nat := crossing_rate bridge_crossing_rate0.
 
 Lemma bridge_crossing_minutes_value : bridge_crossing_minutes = 300.
 Proof. vm_compute; reflexivity. Qed.
@@ -772,15 +803,15 @@ Lemma hastings_window_sufficient_days :
 Proof. vm_compute; lia. Qed.
 
 (* =============================================================================
-   Concrete timeline instance (fully specified, Sep 25 -> Oct 14)
+   Concrete timeline instance (fully specified, Sep 18 -> Oct 14)
    ============================================================================= *)
 
 Definition T_sep25 : timeline := {|
-  t_landing := t_of d_sep25 6 0;
-  t_fulford := t_of d_sep25 7 0;
-  t_york_taken := t_of d_sep25 8 0;
-  t_march_north_start := t_of d_sep25 8 30;
-  t_march_north_end := t_of d_sep25 9 0;
+  t_landing := t_of d_sep18 12 0;        (* Norwegian fleet lands at Riccall, Sep 18 *)
+  t_fulford := t_of d_sep20 9 0;         (* Battle of Fulford, Sep 20 *)
+  t_york_taken := t_of d_sep24 12 0;     (* York submits, Sep 24 *)
+  t_march_north_start := t_of d_sep18 18 0;  (* Harold departs London, ~Sep 18 evening *)
+  t_march_north_end := t_of d_sep25 8 0;     (* Harold reaches Tadcaster/Stamford area *)
   t_bridge_defense := phase_start BridgeHold;
   t_stamford_start := phase_start ShieldWall;
   t_stamford_end := phase_end Rout;
@@ -881,7 +912,13 @@ Proof. vm_compute; reflexivity. Qed.
    Supply model (campaign-level)
    ============================================================================= *)
 
-Definition supply_days_available : nat := 18.
+Definition campaign_days_available : nat :=
+  duration t_sep25_noon t_oct14_morning / minutes_per_day.
+
+Lemma campaign_days_available_value : campaign_days_available = 18.
+Proof. vm_compute; reflexivity. Qed.
+
+Definition supply_days_available : nat := campaign_days_available.
 
 Definition supply_days_needed : nat :=
   travel_days (path_distance route_full) harold_speed_forced + 1.
@@ -897,15 +934,6 @@ Definition supply_margin_days : nat :=
 
 Lemma supply_margin_days_value : supply_margin_days = 3.
 Proof. vm_compute; reflexivity. Qed.
-
-Definition campaign_days_available : nat :=
-  duration t_sep25_noon t_oct14_morning / minutes_per_day.
-
-Lemma campaign_days_available_value : campaign_days_available = 18.
-Proof. vm_compute; reflexivity. Qed.
-
-Lemma supply_within_campaign : supply_days_needed <= campaign_days_available.
-Proof. vm_compute; lia. Qed.
 
 (* =============================================================================
    Derived narrative theorems
