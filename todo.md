@@ -11,5 +11,7 @@
 9. Elevate `speed_11_insufficient` / `speed_12_sufficient` into named capstone theorems establishing the minimum feasible march rate for the Hastings window.
 10. Replace the current trivial capstone theorems with tighter results (e.g., minimum speed bounds, maximum feasible recovery time at Stamford Bridge before the window closes).
 11. Replace the NorthSea distance constant with per-location coastal distances that carry geographic meaning.
-12. Add a comment or docstring flag to each phase timing marking it as a modern reconstruction, not a primary-source value.
-13. Add terminal periods to all inline comments.
+12. Parameterize phase start/end times with uncertainty ranges and prove results hold across them, analogous to the speed robustness proofs.
+13. Refactor `dist` from 81-entry enumerated match into a graph-based shortest-path computation — current `dist_triangle` proof brute-forces 729 cases.
+14. Delete `bridge_delay_after_shieldwall` — identical to `shieldwall_before_bridge_clear`.
+15. Add terminal periods to all inline comments.
