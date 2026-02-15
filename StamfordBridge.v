@@ -936,6 +936,90 @@ Lemma supply_margin_days_value : supply_margin_days = 3.
 Proof. vm_compute; reflexivity. Qed.
 
 (* =============================================================================
+   Robustness: march speed range [25, 35] mi/day
+   ============================================================================= *)
+
+Definition speed_low : nat := 25.
+Definition speed_high : nat := 35.
+
+Lemma speed_low_pos : speed_low > 0.
+Proof. unfold speed_low; lia. Qed.
+
+Lemma harold_speed_in_range :
+  speed_low <= harold_speed_forced <= speed_high.
+Proof. unfold speed_low, speed_high, harold_speed_forced; lia. Qed.
+
+Theorem stamford_hastings_fits_at_low_speed :
+  travel_days miles_Stamford_Hastings speed_low <= d_oct14 - d_sep25.
+Proof. vm_compute; lia. Qed.
+
+Theorem full_march_fits_at_low_speed :
+  travel_days miles_London_York speed_low +
+  travel_days miles_York_Stamford speed_low +
+  travel_days miles_Stamford_Hastings speed_low <= d_oct14 - d_sep25.
+Proof. vm_compute; lia. Qed.
+
+Lemma ceil_div_spec : forall n d, d > 0 -> n <= ceil_div n d * d.
+Proof.
+  intros n d Hd. unfold ceil_div.
+  pose proof (Nat.div_mod_eq (n + d - 1) d).
+  pose proof (Nat.mod_bound_pos (n + d - 1) d ltac:(lia) ltac:(lia)).
+  nia.
+Qed.
+
+Lemma ceil_div_alt : forall n d, d > 0 -> n > 0 ->
+  ceil_div n d = (n - 1) / d + 1.
+Proof.
+  intros n d Hd Hn. unfold ceil_div.
+  replace (n + d - 1) with ((n - 1) + 1 * d) by lia.
+  rewrite Nat.div_add; lia.
+Qed.
+
+Lemma ceil_div_zero : forall d, d > 0 -> ceil_div 0 d = 0.
+Proof.
+  intros d Hd. unfold ceil_div. simpl.
+  apply Nat.div_small. lia.
+Qed.
+
+Lemma ceil_div_anti_mono : forall n d1 d2,
+  d1 > 0 -> d2 > 0 -> d1 <= d2 -> ceil_div n d2 <= ceil_div n d1.
+Proof.
+  intros n d1 d2 Hd1 Hd2 Hle.
+  destruct (Nat.eq_dec n 0) as [->|Hn].
+  - rewrite !ceil_div_zero by lia. lia.
+  - rewrite !ceil_div_alt by lia.
+    assert (H : (n - 1) / d2 <= (n - 1) / d1) by (apply Nat.div_le_compat_l; lia).
+    lia.
+Qed.
+
+Theorem march_fits_for_all_speeds : forall s,
+  speed_low <= s -> s <= speed_high ->
+  travel_days miles_Stamford_Hastings s <= d_oct14 - d_sep25.
+Proof.
+  intros s Hlo Hhi.
+  unfold travel_days.
+  transitivity (ceil_div miles_Stamford_Hastings speed_low).
+  - apply ceil_div_anti_mono; unfold speed_low in *; lia.
+  - vm_compute; lia.
+Qed.
+
+Theorem full_march_fits_for_all_speeds : forall s,
+  speed_low <= s -> s <= speed_high ->
+  travel_days (path_distance route_full) s + 1 <= campaign_days_available.
+Proof.
+  intros s Hlo Hhi.
+  unfold travel_days.
+  assert (Hbound : ceil_div (path_distance route_full) s <=
+                   ceil_div (path_distance route_full) speed_low).
+  { apply ceil_div_anti_mono; unfold speed_low in *; lia. }
+  assert (Hlow : ceil_div (path_distance route_full) speed_low = 17)
+    by (vm_compute; reflexivity).
+  assert (Hcamp : campaign_days_available = 18)
+    by (vm_compute; reflexivity).
+  lia.
+Qed.
+
+(* =============================================================================
    Derived narrative theorems
    ============================================================================= *)
 
