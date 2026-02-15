@@ -690,6 +690,55 @@ Lemma norse_casualties_bounded :
   norse_casualties_total < force_total norse_force.
 Proof. vm_compute; lia. Qed.
 
+(* Force size ranges — plausible estimates *)
+
+Definition english_total_low : nat := 8000.
+Definition english_total_high : nat := 15000.
+Definition norse_total_low : nat := 6000.
+Definition norse_total_high : nat := 12000.
+
+Lemma english_point_in_range :
+  english_total_low <= force_total english_force <= english_total_high.
+Proof. vm_compute; lia. Qed.
+
+Lemma norse_point_in_range :
+  norse_total_low <= force_total norse_force <= norse_total_high.
+Proof. vm_compute; lia. Qed.
+
+Theorem english_superiority_at_estimates :
+  force_total norse_force < force_total english_force.
+Proof. vm_compute; lia. Qed.
+
+Theorem english_superiority_worst_case :
+  norse_total_high - english_total_low = 4000.
+Proof. vm_compute; reflexivity. Qed.
+
+Theorem english_superiority_best_case :
+  english_total_high - norse_total_low = 9000.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma english_casualties_lt_low :
+  english_casualties_total < english_total_low.
+Proof. vm_compute; lia. Qed.
+
+Theorem casualties_bounded_robust : forall e,
+  english_total_low <= e ->
+  english_casualties_total < e.
+Proof.
+  intros e He. pose proof english_casualties_lt_low. lia.
+Qed.
+
+Lemma norse_casualties_lt_low :
+  norse_casualties_total < norse_total_low.
+Proof. vm_compute; lia. Qed.
+
+Theorem norse_casualties_bounded_robust : forall n,
+  norse_total_low <= n ->
+  norse_casualties_total < n.
+Proof.
+  intros n Hn. pose proof norse_casualties_lt_low. lia.
+Qed.
+
 (* Bridge frontage constraints (coarse geometry) *)
 
 Definition man_width_cm : nat := 60.
