@@ -9,7 +9,7 @@
 (*                                                                            *)
 (*     Seofon fot Engliscre eorthan ic him gife, oththe mare, swa micel       *)
 (*     swa he hierra bith thonne othre menn.                                  *)
-(*       - Harold Godwinson to Harald Hardrada, Stamford Bridge, 1066         *)
+(*     - Harold Godwinson's offer to Harald Hardrada, 1066                    *)
 (*                                                                            *)
 (*     Author: Charles C. Norton                                              *)
 (*     Date: January 7, 2026                                                  *)
