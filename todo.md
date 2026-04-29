@@ -10,8 +10,7 @@
 8. Model supply consumption as a function of force size and days elapsed, not just days available vs days needed.
 9. Elevate `speed_11_insufficient` / `speed_12_sufficient` into named capstone theorems establishing the minimum feasible march rate for the Hastings window.
 10. Replace the current trivial capstone theorems with tighter results (e.g., minimum speed bounds, maximum feasible recovery time at Stamford Bridge before the window closes).
-11. Replace the NorthSea distance constant with per-location coastal distances that carry geographic meaning.
-12. Parameterize phase start/end times with uncertainty ranges and prove results hold across them, analogous to the speed robustness proofs.
-13. Refactor `dist` from 81-entry enumerated match into a graph-based shortest-path computation — current `dist_triangle` proof brute-forces 729 cases.
-14. Delete `bridge_delay_after_shieldwall` — identical to `shieldwall_before_bridge_clear`.
-15. Add terminal periods to all inline comments.
+11. Parameterize phase start/end times with uncertainty ranges and prove results hold across them, analogous to the speed robustness proofs.
+12. Add terminal periods to all inline comments.
+13. Generalize `casualties_bounded_robust` and `norse_casualties_bounded_robust` to quantify over the casualty rate estimates as well as the population total. As written, the casualty side of the inequality is fixed at the chosen rates and only the unknown true population is varied.
+14. Bind primary-source citations into the file as documentation tied to the constants they justify: Anglo-Saxon Chronicle MS D/E for 1066, Snorri Sturluson's *Heimskringla* (*Saga of Harald Sigurdsson*), John of Worcester, for distances, force sizes, casualty rates, and phase timings.

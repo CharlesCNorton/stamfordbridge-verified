@@ -17,8 +17,12 @@
 (*                                                                            *)
 (******************************************************************************)
 
-From Coq Require Import Arith Lia List PeanoNat.
+From Stdlib Require Import Arith Bool Lia List PeanoNat.
 Import ListNotations.
+
+(* Large nat literals are interpreted via Init.Nat.of_num_uint to avoid stack
+   overflow during typechecking; this is intentional and not a defect. *)
+Set Warnings "-abstract-large-number".
 
 Open Scope nat_scope.
 
@@ -92,7 +96,7 @@ Lemma travel_days_monotone : forall d1 d2 s,
 Proof.
   intros d1 d2 s Hs Hle.
   unfold travel_days, ceil_div.
-  apply Nat.div_le_mono; lia.
+  apply Nat.Div0.div_le_mono; lia.
 Qed.
 
 Lemma travel_minutes_monotone : forall d1 d2 s,
@@ -125,54 +129,109 @@ Inductive location :=
   | Fulford
   | NorthSea.
 
-Definition dist (a b : location) : nat :=
+Definition loc_eqb (a b : location) : bool :=
   match a, b with
-  (* identity *)
-  | London, London => 0 | York, York => 0 | StamfordBridge, StamfordBridge => 0
-  | Hastings, Hastings => 0 | Tadcaster, Tadcaster => 0 | Derwent, Derwent => 0
-  | Riccall, Riccall => 0 | Fulford, Fulford => 0 | NorthSea, NorthSea => 0
-  (* direct edges *)
-  | London, York | York, London => 190
-  | York, Fulford | Fulford, York => 2
-  | York, Riccall | Riccall, York => 8
-  | York, Tadcaster | Tadcaster, York => 10
-  | York, StamfordBridge | StamfordBridge, York => 10
-  | Riccall, StamfordBridge | StamfordBridge, Riccall => 12
-  | StamfordBridge, Derwent | Derwent, StamfordBridge => 1
-  | StamfordBridge, Hastings | Hastings, StamfordBridge => 210
-  (* shortest paths (Mathematica-computed) *)
-  | London, StamfordBridge | StamfordBridge, London => 200
-  | London, Hastings | Hastings, London => 410
-  | London, Tadcaster | Tadcaster, London => 200
-  | London, Derwent | Derwent, London => 201
-  | London, Riccall | Riccall, London => 198
-  | London, Fulford | Fulford, London => 192
-  | York, Hastings | Hastings, York => 220
-  | York, Derwent | Derwent, York => 11
-  | Tadcaster, StamfordBridge | StamfordBridge, Tadcaster => 20
-  | Tadcaster, Hastings | Hastings, Tadcaster => 230
-  | Tadcaster, Derwent | Derwent, Tadcaster => 21
-  | Tadcaster, Riccall | Riccall, Tadcaster => 18
-  | Tadcaster, Fulford | Fulford, Tadcaster => 12
-  | Derwent, Hastings | Hastings, Derwent => 211
-  | Derwent, Riccall | Riccall, Derwent => 13
-  | Derwent, Fulford | Fulford, Derwent => 13
-  | Riccall, Fulford | Fulford, Riccall => 10
-  | Riccall, Hastings | Hastings, Riccall => 222
-  | Fulford, StamfordBridge | StamfordBridge, Fulford => 12
-  | Fulford, Hastings | Hastings, Fulford => 222
-  (* NorthSea: conventional sea distance, satisfies triangle inequality *)
-  | NorthSea, _ | _, NorthSea => 1000
+  | London, London | York, York | StamfordBridge, StamfordBridge
+  | Hastings, Hastings | Tadcaster, Tadcaster | Derwent, Derwent
+  | Riccall, Riccall | Fulford, Fulford | NorthSea, NorthSea => true
+  | _, _ => false
   end.
 
-Lemma dist_sym : forall a b, dist a b = dist b a.
-Proof. intros a b; destruct a, b; reflexivity. Qed.
+Lemma loc_eqb_refl : forall a, loc_eqb a a = true.
+Proof. destruct a; reflexivity. Qed.
+
+Lemma loc_eqb_eq : forall a b, loc_eqb a b = true -> a = b.
+Proof. destruct a, b; simpl; intros H; congruence. Qed.
+
+Definition all_locations_list : list location :=
+  [London; York; StamfordBridge; Hastings; Tadcaster; Derwent; Riccall; Fulford; NorthSea].
+
+Lemma all_locations_complete : forall l, In l all_locations_list.
+Proof. destruct l; simpl; tauto. Qed.
+
+(* Sentinel value for "no path"; larger than any plausible sum of edges. *)
+Definition INF : nat := 100000.
+
+(* Direct edges of the campaign graph. Land routes between the eight English
+   locations, plus naval-access edges to NorthSea: the Humber-Ouse approach
+   to Riccall (where the Norwegian fleet beached) and the Channel approach to
+   Hastings (which became William's landing area at Pevensey). All other
+   distances are computed by Floyd-Warshall over this edge list. *)
+Definition direct_edges : list (location * location * nat) := [
+  (London, York, 190);
+  (York, Fulford, 2);
+  (York, Riccall, 8);
+  (York, Tadcaster, 10);
+  (York, StamfordBridge, 10);
+  (Riccall, StamfordBridge, 12);
+  (StamfordBridge, Derwent, 1);
+  (StamfordBridge, Hastings, 210);
+  (NorthSea, Riccall, 60);
+  (NorthSea, Hastings, 200)
+].
+
+Fixpoint find_edge_dist (es : list (location * location * nat)) (a b : location) : nat :=
+  match es with
+  | [] => INF
+  | (x, y, d) :: rest =>
+      if (loc_eqb a x && loc_eqb b y) || (loc_eqb a y && loc_eqb b x)
+      then d
+      else find_edge_dist rest a b
+  end.
+
+Definition base_dist (a b : location) : nat :=
+  if loc_eqb a b then 0 else find_edge_dist direct_edges a b.
+
+(* Index each location for matrix-based Floyd-Warshall. The matrix-of-lists
+   representation avoids the closure-chain blow-up that a function-typed
+   relaxation would suffer at vm_compute time on a 9-node graph. *)
+Definition loc_idx (l : location) : nat :=
+  match l with
+  | London => 0 | York => 1 | StamfordBridge => 2 | Hastings => 3
+  | Tadcaster => 4 | Derwent => 5 | Riccall => 6 | Fulford => 7
+  | NorthSea => 8
+  end.
+
+Definition loc_of_idx (i : nat) : location :=
+  match i with
+  | 0 => London | 1 => York | 2 => StamfordBridge | 3 => Hastings
+  | 4 => Tadcaster | 5 => Derwent | 6 => Riccall | 7 => Fulford
+  | _ => NorthSea
+  end.
+
+Definition n_locations : nat := 9.
+
+Definition mat_get (m : list (list nat)) (i j : nat) : nat :=
+  nth j (nth i m []) INF.
+
+Definition init_matrix : list (list nat) :=
+  map (fun i => map (fun j => base_dist (loc_of_idx i) (loc_of_idx j))
+                    (seq 0 n_locations))
+      (seq 0 n_locations).
+
+(* One Floyd-Warshall pass: relax all pairs (i,j) through intermediate k. *)
+Definition mat_relax (m : list (list nat)) (k : nat) : list (list nat) :=
+  map (fun i => map (fun j => Nat.min (mat_get m i j)
+                                      (mat_get m i k + mat_get m k j))
+                    (seq 0 n_locations))
+      (seq 0 n_locations).
+
+Definition mat_fw (m : list (list nat)) : list (list nat) :=
+  fold_left mat_relax (seq 0 n_locations) m.
+
+Definition dist_table : list (list nat) :=
+  Eval vm_compute in mat_fw init_matrix.
+
+Definition dist (a b : location) : nat :=
+  mat_get dist_table (loc_idx a) (loc_idx b).
 
 Lemma dist_zero : forall a, dist a a = 0.
-Proof. intros a; destruct a; reflexivity. Qed.
+Proof. destruct a; vm_compute; reflexivity. Qed.
 
-Lemma dist_triangle : forall a b c,
-  dist a c <= dist a b + dist b c.
+Lemma dist_sym : forall a b, dist a b = dist b a.
+Proof. destruct a, b; vm_compute; reflexivity. Qed.
+
+Lemma dist_triangle : forall a b c, dist a c <= dist a b + dist b c.
 Proof. intros a b c; destruct a, b, c; vm_compute; lia. Qed.
 
 (* =============================================================================
@@ -228,6 +287,8 @@ Inductive event_name :=
   | FulfordBattle
   | YorkTaken
   | MarchNorthBegins
+  | YorkArrive
+  | ApproachStart
   | MarchNorthEnds
   | BridgeDefenseBegins
   | StamfordBattleBegins
@@ -264,7 +325,8 @@ Record timeline := {
   t_hardrada_fall : time;
   t_recovery : time;
   t_march_south_start : time;
-  t_hastings_start : time
+  t_hastings_start : time;
+  t_hastings_end : time
 }.
 
 Fixpoint sorted_by_time_from (prev : event) (rest : list event) : Prop :=
@@ -283,6 +345,7 @@ Record chronology (T : timeline) : Prop := {
   landing_before_fulford : t_landing T < t_fulford T;
   fulford_before_york : t_fulford T < t_york_taken T;
   london_depart_before_york : t_london_depart T < t_york_arrive T;
+  york_arrive_before_approach : t_york_arrive T <= t_approach_start T;
   york_before_approach : t_york_taken T <= t_approach_start T;
   approach_start_before_end : t_approach_start T < t_approach_end T;
   approach_end_before_bridge : t_approach_end T <= t_bridge_defense T;
@@ -291,7 +354,8 @@ Record chronology (T : timeline) : Prop := {
   stamford_end_before_hardrada : t_stamford_end T <= t_hardrada_fall T;
   hardrada_before_recovery : t_hardrada_fall T <= t_recovery T;
   recovery_before_march_south : t_recovery T <= t_march_south_start T;
-  march_south_before_hastings : t_march_south_start T < t_hastings_start T
+  march_south_before_hastings : t_march_south_start T < t_hastings_start T;
+  hastings_start_before_end : t_hastings_start T < t_hastings_end T
 }.
 
 Lemma landing_before_hastings : forall T, chronology T -> t_landing T < t_hastings_start T.
@@ -314,28 +378,28 @@ Definition miles_Riccall_Stamford : nat := 12.
 Definition miles_Stamford_Derwent : nat := 1.
 
 Lemma dist_London_York : dist London York = miles_London_York.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_York_Stamford : dist York StamfordBridge = miles_York_Stamford.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_Stamford_Hastings : dist StamfordBridge Hastings = miles_Stamford_Hastings.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_York_Fulford : dist York Fulford = miles_York_Fulford.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_York_Riccall : dist York Riccall = miles_York_Riccall.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_York_Tadcaster : dist York Tadcaster = miles_York_Tadcaster.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_Riccall_Stamford : dist Riccall StamfordBridge = miles_Riccall_Stamford.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Lemma dist_Stamford_Derwent : dist StamfordBridge Derwent = miles_Stamford_Derwent.
-Proof. reflexivity. Qed.
+Proof. vm_compute; reflexivity. Qed.
 
 Fixpoint path_distance_from (prev : location) (rest : list location) : nat :=
   match rest with
@@ -540,6 +604,7 @@ Qed.
 
 Inductive phase :=
   | Approach
+  | BridgeDefender
   | BridgeHold
   | ShieldWall
   | Rout.
@@ -547,7 +612,8 @@ Inductive phase :=
 Definition phase_start (p : phase) : time :=
   match p with
   | Approach => t_of d_sep25 8 0
-  | BridgeHold => t_of d_sep25 9 30
+  | BridgeDefender => t_of d_sep25 9 30
+  | BridgeHold => t_of d_sep25 10 30
   | ShieldWall => t_of d_sep25 11 30
   | Rout => t_of d_sep25 14 30
   end.
@@ -555,18 +621,22 @@ Definition phase_start (p : phase) : time :=
 Definition phase_end (p : phase) : time :=
   match p with
   | Approach => t_of d_sep25 9 30
+  | BridgeDefender => t_of d_sep25 10 30
   | BridgeHold => t_of d_sep25 11 30
   | ShieldWall => t_of d_sep25 14 30
   | Rout => t_of d_sep25 16 0
   end.
 
-Lemma phase_chain_1 : phase_end Approach = phase_start BridgeHold.
+Lemma phase_chain_1 : phase_end Approach = phase_start BridgeDefender.
 Proof. vm_compute; reflexivity. Qed.
 
-Lemma phase_chain_2 : phase_end BridgeHold = phase_start ShieldWall.
+Lemma phase_chain_2 : phase_end BridgeDefender = phase_start BridgeHold.
 Proof. vm_compute; reflexivity. Qed.
 
-Lemma phase_chain_3 : phase_end ShieldWall = phase_start Rout.
+Lemma phase_chain_3 : phase_end BridgeHold = phase_start ShieldWall.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma phase_chain_4 : phase_end ShieldWall = phase_start Rout.
 Proof. vm_compute; reflexivity. Qed.
 
 Lemma phase_ordered : phase_start Approach < phase_end Rout.
@@ -586,7 +656,10 @@ Definition phase_duration (p : phase) : nat :=
 Lemma phase_duration_approach : phase_duration Approach = 90.
 Proof. vm_compute; reflexivity. Qed.
 
-Lemma phase_duration_bridge : phase_duration BridgeHold = 120.
+Lemma phase_duration_defender : phase_duration BridgeDefender = 60.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma phase_duration_bridge : phase_duration BridgeHold = 60.
 Proof. vm_compute; reflexivity. Qed.
 
 Lemma phase_duration_shield : phase_duration ShieldWall = 180.
@@ -596,8 +669,9 @@ Lemma phase_duration_rout : phase_duration Rout = 90.
 Proof. vm_compute; reflexivity. Qed.
 
 Definition battle_duration_from_phases : nat :=
-  phase_duration Approach + phase_duration BridgeHold +
-  phase_duration ShieldWall + phase_duration Rout.
+  phase_duration Approach + phase_duration BridgeDefender +
+  phase_duration BridgeHold + phase_duration ShieldWall +
+  phase_duration Rout.
 
 Lemma battle_duration_from_phases_value : battle_duration_from_phases = 480.
 Proof. vm_compute; reflexivity. Qed.
@@ -610,11 +684,14 @@ Proof.
   unfold minutes_per_day, hours_per_day, minutes_per_hour; vm_compute; lia.
 Qed.
 
-(* Attrition model (coarse) *)
+(* Attrition model. The BridgeDefender phase covers the lone Norse axeman's
+   stand on the bridge: very few casualties on either side as the defender
+   blocks bulk crossing. *)
 
 Definition casualty_rate_english (p : phase) : nat :=
   match p with
   | Approach => 30
+  | BridgeDefender => 6
   | BridgeHold => 80
   | ShieldWall => 150
   | Rout => 70
@@ -623,6 +700,7 @@ Definition casualty_rate_english (p : phase) : nat :=
 Definition casualty_rate_norse (p : phase) : nat :=
   match p with
   | Approach => 50
+  | BridgeDefender => 6
   | BridgeHold => 120
   | ShieldWall => 200
   | Rout => 300
@@ -633,20 +711,22 @@ Definition casualties_in_phase (rate : phase -> nat) (p : phase) : nat :=
 
 Definition english_casualties_total : nat :=
   casualties_in_phase casualty_rate_english Approach +
+  casualties_in_phase casualty_rate_english BridgeDefender +
   casualties_in_phase casualty_rate_english BridgeHold +
   casualties_in_phase casualty_rate_english ShieldWall +
   casualties_in_phase casualty_rate_english Rout.
 
 Definition norse_casualties_total : nat :=
   casualties_in_phase casualty_rate_norse Approach +
+  casualties_in_phase casualty_rate_norse BridgeDefender +
   casualties_in_phase casualty_rate_norse BridgeHold +
   casualties_in_phase casualty_rate_norse ShieldWall +
   casualties_in_phase casualty_rate_norse Rout.
 
-Lemma english_casualties_total_value : english_casualties_total = 760.
+Lemma english_casualties_total_value : english_casualties_total = 686.
 Proof. vm_compute; reflexivity. Qed.
 
-Lemma norse_casualties_total_value : norse_casualties_total = 1365.
+Lemma norse_casualties_total_value : norse_casualties_total = 1251.
 Proof. vm_compute; reflexivity. Qed.
 
 
@@ -769,11 +849,13 @@ Lemma guard_front_available :
   guard_front <= host_west norse_split.
 Proof. vm_compute; lia. Qed.
 
-Definition bridge_defense_start : time := phase_start BridgeHold.
+Definition bridge_defense_start : time := phase_start BridgeDefender.
 
 Definition bridge_crossing_rate0 : nat := 9. (* yields 10 troops/min *)
 
-(* Instantiate parameterized Bridge section *)
+(* Constant-rate model: averaged over the entire crossing window. The actual
+   dynamics are staged (see staged_* below) but the constant-rate view is
+   convenient for boundary lemmas. *)
 Definition bridge_crossing_minutes : nat :=
   crossing_minutes (host_west norse_split) bridge_crossing_rate0.
 
@@ -831,9 +913,105 @@ Proof.
   unfold minutes_per_day, hours_per_day, minutes_per_hour; nia.
 Qed.
 
-Lemma bridge_delay_after_shieldwall :
-  phase_start ShieldWall < bridge_clear_time.
+(* =============================================================================
+   Staged crossing: defender holds, then bulk crossing
+   ============================================================================= *)
+
+(* The defender phase models Snorri's lone Norse axeman who held the bridge
+   until killed by an English soldier with a spear from below the planks.
+   During this window the crossing rate is a trickle; once the defender
+   falls, the rate jumps to bulk_crossing_rate (= bridge_crossing_rate). *)
+
+Definition defender_minutes : nat := phase_duration BridgeDefender.
+Definition defender_crossing_rate : nat := 1.
+Definition bulk_crossing_rate : nat := bridge_crossing_rate.
+
+Definition troops_through_defender : nat :=
+  defender_crossing_rate * defender_minutes.
+
+Definition west_after_defender : nat :=
+  host_west norse_split - troops_through_defender.
+
+Definition staged_bulk_minutes : nat :=
+  ceil_div west_after_defender bulk_crossing_rate.
+
+Definition staged_bridge_total_minutes : nat :=
+  defender_minutes + staged_bulk_minutes.
+
+Definition staged_bridge_clear_time : time :=
+  phase_start BridgeDefender + staged_bridge_total_minutes.
+
+Definition staged_troops_crossed (t : time) : nat :=
+  let t_offset := t - phase_start BridgeDefender in
+  if Nat.leb t_offset defender_minutes then
+    Nat.min (host_west norse_split) (defender_crossing_rate * t_offset)
+  else
+    Nat.min (host_west norse_split)
+      (troops_through_defender + bulk_crossing_rate * (t_offset - defender_minutes)).
+
+Lemma defender_minutes_value : defender_minutes = 60.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma troops_through_defender_value : troops_through_defender = 60.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma west_after_defender_value : west_after_defender = 2940.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_bulk_minutes_value : staged_bulk_minutes = 294.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_bridge_total_minutes_value : staged_bridge_total_minutes = 354.
+Proof. vm_compute; reflexivity. Qed.
+
+(* Defender stand is short relative to total crossing; even with the
+   bottleneck, the bulk phase dominates the total minutes. *)
+Lemma defender_minutes_lt_bulk : defender_minutes < staged_bulk_minutes.
 Proof. vm_compute; lia. Qed.
+
+Lemma staged_crossed_during_defender :
+  staged_troops_crossed (phase_end BridgeDefender) = troops_through_defender.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_crossed_at_bridgehold_start :
+  staged_troops_crossed (phase_start BridgeHold) = 60.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_crossed_by_shieldwall :
+  staged_troops_crossed (phase_start ShieldWall) = 660.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_crossed_by_rout :
+  staged_troops_crossed (phase_start Rout) = 2460.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma staged_bridge_not_clear_at_rout :
+  staged_troops_crossed (phase_start Rout) < host_west norse_split.
+Proof. vm_compute; lia. Qed.
+
+(* The defender's stand pushes the bridge clear time into the Rout phase. *)
+Lemma staged_bridge_clear_during_rout :
+  phase_start Rout < staged_bridge_clear_time /\
+  staged_bridge_clear_time <= phase_end Rout.
+Proof. split; vm_compute; lia. Qed.
+
+(* The staged model clears later than the constant-rate model: the defender
+   delays bulk crossing by defender_minutes - troops_through_defender / bulk_rate. *)
+Lemma staged_clear_after_constant :
+  bridge_clear_time < staged_bridge_clear_time.
+Proof. vm_compute; lia. Qed.
+
+Lemma staged_bridge_clear_in_daylight :
+  in_sep25_daylight staged_bridge_clear_time.
+Proof.
+  unfold in_sep25_daylight, staged_bridge_clear_time, staged_bridge_total_minutes,
+    defender_minutes, staged_bulk_minutes, west_after_defender,
+    troops_through_defender, defender_crossing_rate, bulk_crossing_rate,
+    bridge_crossing_rate, crossing_rate, bridge_crossing_rate0,
+    phase_duration, phase_start, phase_end, t_sep25_sunrise, t_sep25_sunset,
+    norse_split, host_west, ceil_div, t_of;
+  unfold minutes_per_day, hours_per_day, minutes_per_hour; vm_compute; lia.
+Qed.
 
 (* =============================================================================
    Robustness: bridge bottleneck across crossing rates
@@ -868,19 +1046,19 @@ Proof.
   { apply div_ge; [lia|].
     apply Nat.mul_le_mono_l. lia. }
   assert (H2 : 150 * 20 / S r <= (150 * 20 + S r - 1) / S r).
-  { apply Nat.div_le_mono; lia. }
+  { apply Nat.Div0.div_le_mono; lia. }
   lia.
 Qed.
 
 Theorem bridge_incomplete_at_shieldwall_robust : forall r,
   crossing_rate_low <= S r -> S r <= crossing_rate_high ->
   phase_start ShieldWall <
-    crossing_complete_time (host_west norse_split) r (phase_start BridgeHold).
+    crossing_complete_time (host_west norse_split) r (phase_start BridgeDefender).
 Proof.
   intros r Hlo Hhi.
   unfold crossing_complete_time.
   pose proof (bridge_bottleneck_duration_lower_bound r Hlo Hhi).
-  assert (Hps : phase_start ShieldWall = phase_start BridgeHold + 120)
+  assert (Hps : phase_start ShieldWall = phase_start BridgeDefender + 120)
     by (vm_compute; reflexivity).
   lia.
 Qed.
@@ -922,27 +1100,31 @@ Proof. vm_compute; lia. Qed.
    ============================================================================= *)
 
 Definition T_sep25 : timeline := {|
-  t_landing := t_of d_sep18 12 0;        (* Norwegian fleet lands at Riccall, Sep 18 *)
-  t_fulford := t_of d_sep20 9 0;         (* Battle of Fulford, Sep 20 *)
-  t_york_taken := t_of d_sep24 12 0;     (* York submits, Sep 24 *)
+  t_landing := t_of d_sep18 12 0;            (* Norwegian fleet lands at Riccall, Sep 18 *)
+  t_fulford := t_of d_sep20 9 0;             (* Battle of Fulford, Sep 20 *)
+  t_york_taken := t_of d_sep24 12 0;         (* York submits, Sep 24 *)
   t_london_depart := t_of d_sep18 18 0;      (* Harold departs London, ~Sep 18 evening. *)
   t_york_arrive := t_of d_sep24 18 0;        (* Harold reaches York area, ~Sep 24 evening. *)
   t_approach_start := t_of d_sep25 6 0;      (* Final approach from Tadcaster begins at dawn. *)
   t_approach_end := t_of d_sep25 8 0;        (* Harold reaches Stamford Bridge area. *)
-  t_bridge_defense := phase_start BridgeHold;
+  t_bridge_defense := phase_start BridgeDefender;
   t_stamford_start := phase_start ShieldWall;
   t_stamford_end := phase_end Rout;
   t_hardrada_fall := t_of d_sep25 16 0;
   t_recovery := t_of d_sep25 16 30;
   t_march_south_start := t_sep25_evening;
-  t_hastings_start := t_oct14_morning
+  t_hastings_start := t_oct14_morning;
+  t_hastings_end := t_oct14_morning + battle_duration_minutes
 |}.
 
 Lemma chronology_T_sep25 : chronology T_sep25.
 Proof.
-  unfold T_sep25, phase_start, phase_end, t_sep25_evening, t_oct14_morning, t_of;
+  unfold T_sep25, phase_start, phase_end, t_sep25_evening, t_oct14_morning, t_of,
+    battle_duration_minutes;
   unfold minutes_per_day, hours_per_day, minutes_per_hour.
   constructor.
+  - vm_compute; lia.
+  - vm_compute; lia.
   - vm_compute; lia.
   - vm_compute; lia.
   - vm_compute; lia.
@@ -962,24 +1144,28 @@ Definition events_T_sep25 : list event :=
     {| e_name := MarchNorthBegins; e_time := t_london_depart T_sep25; e_loc := London; e_actor := EnglishHost |};
     {| e_name := FulfordBattle; e_time := t_fulford T_sep25; e_loc := Fulford; e_actor := NorwegianHost |};
     {| e_name := YorkTaken; e_time := t_york_taken T_sep25; e_loc := York; e_actor := NorwegianHost |};
+    {| e_name := YorkArrive; e_time := t_york_arrive T_sep25; e_loc := York; e_actor := EnglishHost |};
+    {| e_name := ApproachStart; e_time := t_approach_start T_sep25; e_loc := Tadcaster; e_actor := EnglishHost |};
     {| e_name := MarchNorthEnds; e_time := t_approach_end T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
     {| e_name := BridgeDefenseBegins; e_time := t_bridge_defense T_sep25; e_loc := StamfordBridge; e_actor := NorwegianHost |};
     {| e_name := StamfordBattleBegins; e_time := t_stamford_start T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
     {| e_name := HardradaFalls; e_time := t_hardrada_fall T_sep25; e_loc := StamfordBridge; e_actor := Hardrada |};
     {| e_name := StamfordBattleEnds; e_time := t_stamford_end T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
+    {| e_name := EnglishRecovery; e_time := t_recovery T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
     {| e_name := MarchSouthBegins; e_time := t_march_south_start T_sep25; e_loc := StamfordBridge; e_actor := EnglishHost |};
-    {| e_name := HastingsBattleBegins; e_time := t_hastings_start T_sep25; e_loc := Hastings; e_actor := EnglishHost |}
+    {| e_name := HastingsBattleBegins; e_time := t_hastings_start T_sep25; e_loc := Hastings; e_actor := EnglishHost |};
+    {| e_name := HastingsBattleEnds; e_time := t_hastings_end T_sep25; e_loc := Hastings; e_actor := EnglishHost |}
   ].
 
 Lemma events_T_sep25_sorted : sorted_by_time events_T_sep25.
 Proof.
   unfold events_T_sep25, sorted_by_time, sorted_by_time_from, T_sep25, phase_start, phase_end,
-    t_sep25_evening, t_oct14_morning, t_of;
+    t_sep25_evening, t_oct14_morning, t_of, battle_duration_minutes;
   simpl; repeat split; vm_compute; lia.
 Qed.
 
 Lemma T_sep25_bridge_matches_phase :
-  t_bridge_defense T_sep25 = phase_start BridgeHold.
+  t_bridge_defense T_sep25 = phase_start BridgeDefender.
 Proof. reflexivity. Qed.
 
 Lemma T_sep25_battle_window_daylight :
