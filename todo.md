@@ -1,16 +1,21 @@
 # StamfordBridge.v — Issues and Fixes
 
-1. Reduce `english_force` total from 11,000 toward 7,000–8,000, or parameterize it with a range and prove results hold across the range.
-2. Connect force composition (heavy/light/archers) to phase-specific combat effectiveness.
-3. Wire casualty accumulation into force strength — casualties should reduce effective combat power per phase, not just accumulate independently.
-4. Increase Norse casualty rates (especially Rout phase) so total losses reach ~80% of the force, matching historical accounts of 24 ships returning from ~300.
-5. Make crossing rate degrade as defending force depletes — bridge bottleneck should respond to attrition.
-6. Prove battle outcome (rout) follows from force ratio crossing a threshold, not just assert it via phase structure.
-7. Feed post-battle effective strength into march south feasibility — a depleted army marches slower.
-8. Model supply consumption as a function of force size and days elapsed, not just days available vs days needed.
-9. Elevate `speed_11_insufficient` / `speed_12_sufficient` into named capstone theorems establishing the minimum feasible march rate for the Hastings window.
-10. Replace the current trivial capstone theorems with tighter results (e.g., minimum speed bounds, maximum feasible recovery time at Stamford Bridge before the window closes).
-11. Parameterize phase start/end times with uncertainty ranges and prove results hold across them, analogous to the speed robustness proofs.
-12. Add terminal periods to all inline comments.
-13. Generalize `casualties_bounded_robust` and `norse_casualties_bounded_robust` to quantify over the casualty rate estimates as well as the population total. As written, the casualty side of the inequality is fixed at the chosen rates and only the unknown true population is varied.
-14. Bind primary-source citations into the file as documentation tied to the constants they justify: Anglo-Saxon Chronicle MS D/E for 1066, Snorri Sturluson's *Heimskringla* (*Saga of Harald Sigurdsson*), John of Worcester, for distances, force sizes, casualty rates, and phase timings.
+1. Migrate the time/arithmetic layer from unary `nat` to binary `Z` (or `N`); delete the `abstract-large-number` suppression and the `of_num_uint` workarounds, so `vm_compute` no longer stack-overflows on large time values and every later proof scales.
+2. Correct the Stamford Bridge→Hastings distance from 210 to a defensible ~250–260 mi (the via-London route actually marched) and re-derive all dependent route and feasibility constants.
+3. Prove per-leg interval containment for the real campaign — each segment fits inside its own actual sub-window (London→York within 18–24 Sep, the fight on the 25th, Stamford→Hastings within 25 Sep–14 Oct) — instead of one coarse sufficient inequality over mismatched intervals.
+4. Parameterize both army totals over their full plausible ranges (English 8k–15k, Norse 6k–12k) and prove the *exact* condition under which the English outnumber the Norse, characterizing the boundary of that region — rather than lowering the English total to a point estimate or asserting a universal superiority that is in fact false at min-English vs max-Norse.
+5. Connect force composition (heavy/light/archers) to phase-specific combat effectiveness as a defined function, not a static count.
+6. Make casualties reduce effective combat power per phase — wire attrition into strength so each phase consumes the surviving force.
+7. Derive the crossing bottleneck from geometry: prove bridge frontage caps simultaneously-engaged attackers, that this cap bounds the maximum crossing/kill rate, and obtain the lone-axeman stand at a one-man frontage as a corollary — so the rate is a consequence of width, not an asserted constant or an adjusted width.
+8. Make the crossing rate degrade as the defending force depletes, so the bottleneck responds to attrition.
+9. Prove the rout follows from the force ratio crossing a threshold, derived from the model, rather than asserted through the phase structure.
+10. Derive the ~80% Norse loss (the ~24-of-~300 ships) as a *theorem* consequent on items 6–9, rather than hand-tuning casualty-rate constants to hit the figure.
+11. Feed post-battle effective strength into the march-south model so the surviving, depleted army marches at a proven reduced speed.
+12. Model supply as a stock drawn down by force size × days elapsed, and prove non-starvation (stock stays positive through the campaign) across the full force-size and speed ranges — not a single days-available ≥ days-needed check.
+13. Prove 12 mi/day is *exactly* the minimum feasible march rate — that 12 suffices and every rate ≤ 11 fails — as one iff/threshold capstone, not two isolated point computations.
+14. Prove the exact maximum recovery/delay admissible at Stamford Bridge before the window closes — the army absorbs at most N days and N+1 fails — as a tight iff bound.
+15. Parameterize phase start/end times over uncertainty ranges and prove the phase-chaining, daylight, and crossing results hold across them, as with the speed-robustness proofs.
+16. Generalize `casualties_bounded_robust` / `norse_casualties_bounded_robust` to quantify over the casualty-rate estimates *and* the population total, so neither side of the inequality is pinned to chosen constants.
+17. Construct the historically accurate timeline (stay at York, William's 28 Sep landing, ~1–2 Oct departure) and prove it satisfies `chronology` and fits the window; and prove the admissible-departure window is a genuine interval by establishing both its earliest bound (battle-end + recovery) and latest bound (window-close − march time), with the historical departure strictly inside — keeping the historical claim and proving it, not relabeling `T_sep25`.
+18. Consolidate the `vm_compute`-only ground-value lemmas (the `_value` equalities) into a clearly marked computational section or `Example`s, and foreground the structural theorems (9, 10, 13, 14, 15, 16, 17) as the file's headline results.
+19. Bind primary-source citations into the file as documentation tied to the constants they justify: Anglo-Saxon Chronicle MS D/E, Snorri's *Heimskringla* (*Saga of Harald Sigurðarson*), and John of Worcester — for distances, force sizes, casualty rates, and phase timings.
