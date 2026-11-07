@@ -6,7 +6,7 @@
 (*                                                                            *)
 (*   Seofon fota Engliscre eorþan gife ic him, oþþe swa micle mare            *)
 (*   swa he hierra bið þonne oþre menn.                                       *)
-(*   - Harold Godwinson to Harald Hardrada, 25 September 1066                 *)
+(*   - Harold's offer to Tostig for Harald Hardrada, after Heimskringla       *)
 (*                                                                            *)
 (*   Author: Charles C. Norton                                                *)
 (*   Date: August 11, 2026                                                    *)
@@ -20,18 +20,25 @@ Import ListNotations.
 Open Scope Z_scope.
 
 (* =============================================================================
-   Primary sources
+   Sources and tags
    =============================================================================
 
-   [ASC-C]  Anglo-Saxon Chronicle, MS C, anno 1066.
-   [ASC-D]  Anglo-Saxon Chronicle, MS D, anno 1066.
-   [ASC-E]  Anglo-Saxon Chronicle, MS E, anno 1066.
-   [HEIM]   Snorri Sturluson, Heimskringla, Saga of Harald Sigurdarson.
-   [JW]     John of Worcester, Chronicon ex chronicis, anno 1066.
-   [HH]     Henry of Huntingdon, Historia Anglorum, book VI.
-   [WJ]     William of Jumieges, Gesta Normannorum Ducum, book VII.
+   [ASC-C]   Anglo-Saxon Chronicle, MS C, anno 1066.
+   [ASC-C+]  The twelfth-century addition to MS C describing the bridge fight.
+   [ASC-D]   Anglo-Saxon Chronicle, MS D, anno 1066.
+   [HEIM]    Snorri Sturluson, Heimskringla, Saga of Harald Sigurdarson.
+   [JW]      John of Worcester, Chronicon ex chronicis, anno 1066.
 
-   Every constant below carries the source tag that justifies it.
+   [GEO]     Approximate mileage on modern maps along the Roman and medieval
+             roads, or across country where the text says so.
+   [ASTRO]   Sunrise and sunset computed for the Julian date at the site, in
+             local apparent solar time.
+   [RECON]   A date or figure from modern reconstruction that no primary
+             source states.
+   [MODEL]   A modelling assumption with no source.
+
+   Where a [MODEL] constant carries a range, the theorems below quantify over
+   it and name the range's end points.
    ============================================================================= *)
 
 (* vm_compute turns a Z ordering into a comparison, discharged by discriminate. *)
@@ -80,19 +87,61 @@ Qed.
 Lemma ceil_div_zero : forall d, 0 < d -> ceil_div 0 d = 0.
 Proof. intros d Hd. unfold ceil_div. apply Z.div_small; lia. Qed.
 
-(* A rate threshold is exact when it succeeds and its predecessor fails. *)
+(* The least q with ceil_div n d <= q is exactly the bound n <= q * d. *)
+Lemma ceil_div_le_iff : forall n d q, 0 < d -> (ceil_div n d <= q <-> n <= q * d).
+Proof.
+  intros n d q Hd. split.
+  - intros H. transitivity (ceil_div n d * d); [apply ceil_div_spec; exact Hd|].
+    apply Z.mul_le_mono_nonneg_r; lia.
+  - apply ceil_div_le; exact Hd.
+Qed.
+
+(* A threshold on an antitone function is exact when it succeeds and its predecessor fails. *)
+Lemma threshold_antitone : forall (f : Z -> Z) bound lo,
+  (forall s1 s2, 0 < s1 -> s1 <= s2 -> f s2 <= f s1) ->
+  0 < lo - 1 -> f lo <= bound -> bound < f (lo - 1) ->
+  forall s, 0 < s -> (f s <= bound <-> lo <= s).
+Proof.
+  intros f bound lo Hmono Hlo Hok Hbad s Hs. split.
+  - intros H. destruct (Z.le_gt_cases lo s) as [Hge|Hlt]; [exact Hge|].
+    assert (f (lo - 1) <= f s) by (apply Hmono; lia). lia.
+  - intros H. transitivity (f lo); [apply Hmono; lia | exact Hok].
+Qed.
+
 Lemma rate_threshold_iff : forall n bound lo,
   0 <= n -> 0 < lo - 1 ->
   ceil_div n lo <= bound ->
   bound < ceil_div n (lo - 1) ->
   forall s, 0 < s -> (ceil_div n s <= bound <-> lo <= s).
 Proof.
-  intros n bound lo Hn Hlo Hok Hbad s Hs. split.
-  - intros H. destruct (Z.le_gt_cases lo s) as [Hge|Hlt]; [exact Hge|].
-    assert (Hmono : ceil_div n (lo - 1) <= ceil_div n s)
-      by (apply ceil_div_anti_mono; lia).
-    lia.
-  - intros H. transitivity (ceil_div n lo); [apply ceil_div_anti_mono; lia | exact Hok].
+  intros n bound lo Hn Hlo Hok Hbad s Hs.
+  refine (threshold_antitone (fun s => ceil_div n s) bound lo _ Hlo Hok Hbad s Hs).
+  intros s1 s2 H1 H12. apply ceil_div_anti_mono; lia.
+Qed.
+
+(* A boolean property checked at every integer of a range holds on the range. *)
+Fixpoint all_in (f : Z -> bool) (lo : Z) (n : nat) : bool :=
+  match n with
+  | O => true
+  | S n' => f lo && all_in f (lo + 1) n'
+  end.
+
+Lemma all_in_spec : forall f n lo,
+  all_in f lo n = true -> forall x, lo <= x < lo + Z.of_nat n -> f x = true.
+Proof.
+  intros f n. induction n as [|n IH]; intros lo H x Hx.
+  - simpl in Hx. lia.
+  - simpl in H. apply andb_true_iff in H. destruct H as [H1 H2].
+    destruct (Z.eq_dec x lo) as [->|Hne]; [exact H1|].
+    apply (IH (lo + 1) H2). rewrite Nat2Z.inj_succ in Hx. lia.
+Qed.
+
+Lemma all_in_range : forall f lo hi,
+  all_in f lo (Z.to_nat (hi - lo + 1)) = true -> forall x, lo <= x <= hi -> f x = true.
+Proof.
+  intros f lo hi H x Hx.
+  apply (all_in_spec f (Z.to_nat (hi - lo + 1)) lo H x).
+  rewrite Z2Nat.id by lia. lia.
 Qed.
 
 (* =============================================================================
@@ -104,7 +153,7 @@ Definition hours_per_day : Z := 24.
 Definition minutes_per_day : Z := hours_per_day * minutes_per_hour.
 
 Definition day : Type := Z.
-Definition time : Type := Z. (* minutes since 00:00 on 1 September 1066 *)
+Definition time : Type := Z. (* minutes since 00:00 on 1 September 1066, Julian *)
 
 Definition t_of (d h m : Z) : time :=
   d * minutes_per_day + h * minutes_per_hour + m.
@@ -127,7 +176,6 @@ Qed.
 Lemma duration_pos : forall t1 t2, t1 < t2 -> 0 < duration t1 t2.
 Proof. intros; unfold duration; lia. Qed.
 
-(* Reversal is a sign change, not the silent truncation unary naturals give. *)
 Lemma duration_antisym : forall t1 t2, duration t2 t1 = - duration t1 t2.
 Proof. intros; unfold duration; lia. Qed.
 
@@ -142,27 +190,25 @@ Proof. intros; unfold duration; lia. Qed.
 Inductive actor :=
   | Harold
   | Hardrada
-  | Tostig
   | William
   | EnglishHost
   | NorwegianHost.
 
 Inductive location :=
   | London
-  | York
-  | StamfordBridge
-  | Hastings
   | Tadcaster
-  | Derwent
-  | Riccall
+  | York
   | Fulford
-  | NorthSea.
+  | Riccall
+  | StamfordBridge
+  | Hastings      (* the Senlac position at Battle *)
+  | Pevensey.
 
 Definition loc_eqb (a b : location) : bool :=
   match a, b with
-  | London, London | York, York | StamfordBridge, StamfordBridge
-  | Hastings, Hastings | Tadcaster, Tadcaster | Derwent, Derwent
-  | Riccall, Riccall | Fulford, Fulford | NorthSea, NorthSea => true
+  | London, London | Tadcaster, Tadcaster | York, York | Fulford, Fulford
+  | Riccall, Riccall | StamfordBridge, StamfordBridge | Hastings, Hastings
+  | Pevensey, Pevensey => true
   | _, _ => false
   end.
 
@@ -173,7 +219,7 @@ Lemma loc_eqb_eq : forall a b, loc_eqb a b = true -> a = b.
 Proof. destruct a, b; simpl; intros H; congruence. Qed.
 
 Definition all_locations_list : list location :=
-  [London; York; StamfordBridge; Hastings; Tadcaster; Derwent; Riccall; Fulford; NorthSea].
+  [London; Tadcaster; York; Fulford; Riccall; StamfordBridge; Hastings; Pevensey].
 
 Lemma all_locations_complete : forall l, In l all_locations_list.
 Proof. destruct l; simpl; tauto. Qed.
@@ -181,18 +227,16 @@ Proof. destruct l; simpl; tauto. Qed.
 (* Sentinel exceeding any sum of edges on this graph. *)
 Definition INF : Z := 100000.
 
-(* Direct edges only; Stamford Bridge to Hastings is derived, not asserted. *)
+(* Direct edges only; every longer distance is a shortest path over them. *)
 Definition direct_edges : list (location * location * Z) := [
-  (London, York, 190);           (* Ermine Street, London to York [JW] *)
-  (London, Hastings, 58);        (* London to the Senlac position [JW] *)
-  (York, Fulford, 2);            (* Fulford lies just south of York [ASC-C] *)
-  (York, Riccall, 8);            (* the Norwegian fleet beached at Riccall [ASC-C] *)
-  (York, Tadcaster, 10);         (* Harold's muster point, 24 September [ASC-C] *)
-  (York, StamfordBridge, 10);    (* the battlefield east of York [ASC-D] *)
-  (Riccall, StamfordBridge, 12); (* the flight route back to the ships [HEIM] *)
-  (StamfordBridge, Derwent, 1);  (* the bridge spans the Derwent [ASC-D] *)
-  (NorthSea, Riccall, 60);       (* the Humber and Ouse approach [ASC-C] *)
-  (NorthSea, Hastings, 200)      (* the Channel crossing to Pevensey [WJ] *)
+  (London, Tadcaster, 180);      (* Ermine Street and the road north [GEO] *)
+  (Tadcaster, York, 10);         (* the Roman road into York [GEO] *)
+  (York, Fulford, 2);            (* Fulford lies just south of York [GEO] *)
+  (York, Riccall, 10);           (* down the Ouse to the beached fleet [GEO] *)
+  (York, StamfordBridge, 8);     (* east to the Derwent crossing [GEO] *)
+  (Riccall, StamfordBridge, 13); (* across country, the line of flight [GEO] *)
+  (London, Hastings, 58);        (* London to the Senlac position [GEO] *)
+  (Pevensey, Hastings, 10)       (* the Norman beachhead to Senlac [GEO] *)
 ].
 
 Fixpoint find_edge_dist (es : list (location * location * Z)) (a b : location) : Z :=
@@ -207,22 +251,23 @@ Fixpoint find_edge_dist (es : list (location * location * Z)) (a b : location) :
 Definition base_dist (a b : location) : Z :=
   if loc_eqb a b then 0 else find_edge_dist direct_edges a b.
 
-(* Matrix indices stay in nat; edge weights are binary integers. *)
 Definition loc_idx (l : location) : nat :=
   match l with
-  | London => 0 | York => 1 | StamfordBridge => 2 | Hastings => 3
-  | Tadcaster => 4 | Derwent => 5 | Riccall => 6 | Fulford => 7
-  | NorthSea => 8
+  | London => 0 | Tadcaster => 1 | York => 2 | Fulford => 3
+  | Riccall => 4 | StamfordBridge => 5 | Hastings => 6 | Pevensey => 7
   end%nat.
 
 Definition loc_of_idx (i : nat) : location :=
   match i with
-  | 0 => London | 1 => York | 2 => StamfordBridge | 3 => Hastings
-  | 4 => Tadcaster | 5 => Derwent | 6 => Riccall | 7 => Fulford
-  | _ => NorthSea
+  | 0 => London | 1 => Tadcaster | 2 => York | 3 => Fulford
+  | 4 => Riccall | 5 => StamfordBridge | 6 => Hastings
+  | _ => Pevensey
   end%nat.
 
-Definition n_locations : nat := 9%nat.
+Lemma loc_of_idx_inverse : forall l, loc_of_idx (loc_idx l) = l.
+Proof. destruct l; reflexivity. Qed.
+
+Definition n_locations : nat := 8%nat.
 
 Definition mat_get (m : list (list Z)) (i j : nat) : Z := nth j (nth i m []) INF.
 
@@ -257,32 +302,33 @@ Proof. intros a b c; destruct a, b, c; ground. Qed.
 Lemma dist_nonneg : forall a b, 0 <= dist a b.
 Proof. destruct a, b; ground. Qed.
 
-(* Canonical marching distances, all read off the shortest-path closure. *)
+(* The closure never exceeds a direct edge. *)
+Lemma dist_le_base : forall a b, dist a b <= base_dist a b.
+Proof. destruct a, b; ground. Qed.
+
+(* Every pair is connected: no distance is the sentinel. *)
+Lemma dist_finite : forall a b, dist a b < INF.
+Proof. destruct a, b; ground. Qed.
+
+Definition miles_London_Tadcaster : Z := dist London Tadcaster.
 Definition miles_London_York : Z := dist London York.
 Definition miles_York_Stamford : Z := dist York StamfordBridge.
+Definition miles_Tadcaster_Stamford : Z := dist Tadcaster StamfordBridge.
 Definition miles_London_Hastings : Z := dist London Hastings.
+Definition miles_Stamford_London : Z := dist StamfordBridge London.
 Definition miles_Stamford_Hastings : Z := dist StamfordBridge Hastings.
-Definition miles_York_Hastings : Z := dist York Hastings.
 Definition miles_Stamford_Riccall : Z := dist StamfordBridge Riccall.
-Definition miles_York_Fulford : Z := dist York Fulford.
-Definition miles_York_Riccall : Z := dist York Riccall.
-Definition miles_York_Tadcaster : Z := dist York Tadcaster.
-Definition miles_Stamford_Derwent : Z := dist StamfordBridge Derwent.
+Definition miles_Pevensey_York : Z := dist Pevensey York.
 
-(* The southward distance is the via-London route, not a cross-country line. *)
+(* The southward distance is the via-London route. *)
 Theorem stamford_hastings_via_london :
   miles_Stamford_Hastings
   = miles_York_Stamford + miles_London_York + miles_London_Hastings.
 Proof. ground. Qed.
 
-Theorem stamford_hastings_in_defensible_band :
-  250 <= miles_Stamford_Hastings <= 260.
-Proof. ground. Qed.
-
-(* No sea leg beats the road: the Humber and Channel route is longer. *)
-Theorem land_route_beats_sea_route :
-  miles_Stamford_Hastings
-  < dist StamfordBridge Riccall + dist Riccall NorthSea + dist NorthSea Hastings.
+(* The line of flight to the ships is shorter than the road back through York. *)
+Theorem flight_line_beats_road :
+  miles_Stamford_Riccall < dist StamfordBridge York + dist York Riccall.
 Proof. ground. Qed.
 
 Fixpoint path_distance_from (prev : location) (rest : list location) : Z :=
@@ -297,49 +343,37 @@ Definition path_distance (path : list location) : Z :=
   | a :: rest => path_distance_from a rest
   end.
 
-Definition route_north : list location := [London; York; StamfordBridge].
+Definition route_north : list location := [London; Tadcaster; York; StamfordBridge].
 Definition route_south : list location := [StamfordBridge; York; London; Hastings].
 Definition route_full : list location :=
-  [London; York; StamfordBridge; York; London; Hastings].
-Definition route_riccall_bridge : list location := [Riccall; StamfordBridge].
-Definition route_york_fulford : list location := [York; Fulford].
+  [London; Tadcaster; York; StamfordBridge; York; London; Hastings].
 
-Lemma route_north_distance : path_distance route_north = 200.
+Lemma route_north_distance : path_distance route_north = 198.
 Proof. ground. Qed.
 
-(* The marched southward route costs exactly the shortest-path distance. *)
+Lemma route_north_is_shortest : path_distance route_north = dist London StamfordBridge.
+Proof. ground. Qed.
+
 Lemma route_south_distance : path_distance route_south = miles_Stamford_Hastings.
 Proof. ground. Qed.
 
-Lemma route_full_distance : path_distance route_full = 458.
-Proof. ground. Qed.
-
-Lemma route_full_decompose :
-  path_distance route_full = path_distance route_north + path_distance route_south.
-Proof. ground. Qed.
-
-Lemma route_riccall_bridge_distance :
-  path_distance route_riccall_bridge = miles_Stamford_Riccall.
-Proof. ground. Qed.
-
-Lemma route_york_fulford_distance :
-  path_distance route_york_fulford = miles_York_Fulford.
+Lemma route_full_distance : path_distance route_full = 454.
 Proof. ground. Qed.
 
 (* =============================================================================
    Calendar anchors, days since 1 September 1066
    ============================================================================= *)
 
-Definition d_sep18 : day := 17.  (* Norwegian fleet beaches at Riccall [ASC-C] *)
-Definition d_sep20 : day := 19.  (* Battle of Fulford; Harold quits London [ASC-C] *)
-Definition d_sep24 : day := 23.  (* Harold reaches Tadcaster; York submits [ASC-C] *)
-Definition d_sep25 : day := 24.  (* Battle of Stamford Bridge [ASC-D] *)
-Definition d_sep28 : day := 27.  (* William lands at Pevensey [ASC-D] *)
-Definition d_oct01 : day := 30.  (* Harold quits York for the south [JW] *)
-Definition d_oct07 : day := 36.  (* Harold reaches London [JW] *)
-Definition d_oct12 : day := 41.  (* Harold quits London after six days [JW] *)
-Definition d_oct13 : day := 42.  (* Harold reaches the Senlac position [JW] *)
-Definition d_oct14 : day := 43.  (* Battle of Hastings [ASC-D] *)
+Definition d_sep18 : day := 17.  (* Norwegian fleet beaches at Riccall [RECON] *)
+Definition d_sep20 : day := 19.  (* Fulford, St Matthew's vigil [JW]; Harold quits London [RECON] *)
+Definition d_sep24 : day := 23.  (* Harold reaches Tadcaster on the Sunday [ASC-C] *)
+Definition d_sep25 : day := 24.  (* Stamford Bridge, the Monday [ASC-C] *)
+Definition d_sep28 : day := 27.  (* William at Pevensey on Michaelmas eve [ASC-D] *)
+Definition d_oct01 : day := 30.  (* Harold quits York for the south [RECON] *)
+Definition d_oct07 : day := 36.  (* Harold reaches London [RECON] *)
+Definition d_oct12 : day := 41.  (* Harold quits London [RECON] *)
+Definition d_oct13 : day := 42.  (* Harold reaches the Senlac position [RECON] *)
+Definition d_oct14 : day := 43.  (* Hastings, the feast of Pope Calixtus [ASC-D] *)
 
 Lemma day_ordering :
   d_sep18 < d_sep20 /\ d_sep20 < d_sep24 /\ d_sep24 < d_sep25 /\ d_sep25 < d_sep28
@@ -350,23 +384,19 @@ Proof.
     d_oct13, d_oct14; repeat split; lia.
 Qed.
 
-Definition t_sep25_noon : time := t_of d_sep25 12 0.
-Definition t_sep25_evening : time := t_of d_sep25 18 0.
-Definition t_oct14_morning : time := t_of d_oct14 9 0.
+(* 25 September Julian is 1 October Gregorian; York, latitude 54 N [ASTRO]. *)
+Definition t_sep25_sunrise : time := t_of d_sep25 6 25.
+Definition t_sep25_sunset : time := t_of d_sep25 17 35.
+Definition t_sep25_first_light : time := t_of d_sep25 6 0.
 
-Lemma days_between_sep25_oct14 :
-  duration t_sep25_noon t_oct14_morning / minutes_per_day = 18.
-Proof. ground. Qed.
-
-(* Sunrise and sunset at York on 25 September, Julian reckoning. *)
-Definition t_sep25_sunrise : time := t_of d_sep25 6 0.
-Definition t_sep25_sunset : time := t_of d_sep25 18 0.
+(* 14 October Julian is 20 October Gregorian; Battle, latitude 51 N [ASTRO]. *)
+Definition t_oct14_sunset : time := t_of d_oct14 17 0.
 
 Definition in_sep25_daylight (t : time) : Prop :=
   t_sep25_sunrise <= t <= t_sep25_sunset.
 
 (* =============================================================================
-   Marching rates and leg feasibility
+   Marching days
    ============================================================================= *)
 
 Definition travel_days (distance rate : Z) : Z := ceil_div distance rate.
@@ -388,28 +418,12 @@ Definition leg_days (depart arrive : day) : Z := arrive - depart + 1.
 Definition leg_fits (depart arrive : day) (miles rate : Z) : Prop :=
   travel_days miles rate <= leg_days depart arrive.
 
-Definition rate_north : Z := 40.       (* mounted forced march to Tadcaster [ASC-C] *)
-Definition rate_south_base : Z := 30.  (* the reassembled host marching south [JW] *)
-Definition norse_rate : Z := 15.       (* Norwegian movement on foot [HEIM] *)
-
-Lemma rate_north_pos : 0 < rate_north. Proof. unfold rate_north; lia. Qed.
-Lemma rate_south_base_pos : 0 < rate_south_base. Proof. unfold rate_south_base; lia. Qed.
-Lemma norse_rate_pos : 0 < norse_rate. Proof. unfold norse_rate; lia. Qed.
-
-(* Whole-route rounding is cheaper than per-leg rounding by one marching day. *)
-Lemma segment_rounding_penalty :
-  travel_days miles_London_York rate_north
-  + travel_days miles_York_Stamford rate_north
-  + travel_days miles_Stamford_Hastings rate_north
-  = travel_days (path_distance route_full) rate_north + 1.
-Proof. ground. Qed.
-
 (* =============================================================================
    Forces
    ============================================================================= *)
 
 Record force := {
-  heavy : Z;    (* housecarls and hirdmen in mail *)
+  heavy : Z;    (* housecarls and hirdmen, the professional core *)
   light : Z;    (* fyrd and bondi *)
   archers : Z
 }.
@@ -443,28 +457,39 @@ Lemma sub_force_total : forall f g,
   force_total (sub_force f g) = force_total f - force_total g.
 Proof. intros [h1 l1 a1] [h2 l2 a2]; unfold force_total, sub_force; cbn; lia. Qed.
 
-(* Harold's host at the bridge: housecarls and the northern fyrd [ASC-C], [JW]. *)
+(* No source counts either army; the point estimates are modern [RECON]. *)
 Definition english_force : force := {| heavy := 3000; light := 7000; archers := 1000 |}.
 
-(* Hardrada's army, landed from roughly three hundred ships [HEIM]. *)
-Definition norse_force : force := {| heavy := 3500; light := 4500; archers := 1000 |}.
+(* The army of some three hundred ships [ASC-D], at a strength of [RECON]. *)
+Definition norse_force : force := {| heavy := 3600; light := 4500; archers := 900 |}.
 
-(* The Norwegians were divided by the Derwent when the English arrived [ASC-D]. *)
-Definition norse_west : force := {| heavy := 1200; light := 1500; archers := 300 |}.
-Definition norse_east : force := {| heavy := 2300; light := 3000; archers := 700 |}.
+(* Hardrada left a third of the army at the ships under Eystein Orre [HEIM]. *)
+Definition norse_reserve : force := scale_force norse_force 1 3.
+Definition norse_field : force := sub_force norse_force norse_reserve.
 
-Lemma norse_split_exact : add_force norse_west norse_east = norse_force.
+(* The field army stood on both banks when the English came on [ASC-C+]; halves [MODEL]. *)
+Definition norse_west : force := scale_force norse_field 1 2.
+Definition norse_east : force := sub_force norse_field norse_west.
+
+Lemma norse_partition :
+  add_force (add_force norse_west norse_east) norse_reserve = norse_force.
 Proof. ground. Qed.
 
-Lemma norse_split_totals :
-  force_total norse_west = 3000 /\ force_total norse_east = 6000
-  /\ force_total norse_force = 9000.
+Lemma norse_partition_totals :
+  force_total norse_west = 3000 /\ force_total norse_east = 3000
+  /\ force_total norse_reserve = 3000 /\ force_total norse_force = 9000.
 Proof. ground. Qed.
 
 Lemma english_force_total : force_total english_force = 11000.
 Proof. ground. Qed.
 
-(* Plausible ranges reported across the sources. *)
+Lemma english_force_wf : force_wf english_force.
+Proof. ground. Qed.
+
+Lemma norse_west_wf : force_wf norse_west.
+Proof. ground. Qed.
+
+(* Modern ranges for the whole of each army [RECON]. *)
 Definition english_total_low : Z := 8000.
 Definition english_total_high : Z := 15000.
 Definition norse_total_low : Z := 6000.
@@ -480,7 +505,7 @@ Lemma norse_point_in_range : norse_in_range (force_total norse_force).
 Proof. unfold norse_in_range, norse_total_low, norse_total_high; ground. Qed.
 
 (* -----------------------------------------------------------------------------
-   Exact superiority region over both ranges
+   Numerical superiority over the ranges
    -------------------------------------------------------------------------- *)
 
 (* Superiority over the whole Norse range holds iff e clears the Norse maximum. *)
@@ -495,7 +520,7 @@ Proof.
   - intros H n Hn. unfold norse_total_high in H. lia.
 Qed.
 
-(* Superiority is not universal over the ranges: the extremes invert it. *)
+(* Some admissible pair of totals has the Norse the larger. *)
 Theorem english_superiority_not_universal :
   exists e n, english_in_range e /\ norse_in_range n /\ e < n.
 Proof.
@@ -505,29 +530,20 @@ Proof.
   repeat split; lia.
 Qed.
 
-(* The boundary of the guaranteed-superiority region. *)
-Theorem english_superiority_boundary :
-  (forall n, norse_in_range n -> n < norse_total_high + 1)
-  /\ ~ (forall n, norse_in_range n -> n < norse_total_high).
+(* With a third of the Norse at the ships, no admissible field army outnumbers an
+   admissible English host. *)
+Theorem english_outnumber_the_field : forall e n,
+  english_in_range e -> norse_in_range n -> n - n / 3 <= e.
 Proof.
-  unfold norse_in_range, norse_total_low, norse_total_high. split.
-  - intros n Hn; lia.
-  - intros H. specialize (H 12000 ltac:(lia)). lia.
+  intros e n He Hn.
+  unfold english_in_range, norse_in_range, english_total_low, english_total_high,
+    norse_total_low, norse_total_high in *.
+  pose proof (Z.div_mod n 3 ltac:(lia)). pose proof (Z.mod_pos_bound n 3 ltac:(lia)).
+  lia.
 Qed.
 
-(* Superiority against some admissible Norse total holds throughout the English range. *)
-Theorem english_superiority_somewhere : forall e,
-  english_in_range e -> exists n, norse_in_range n /\ n < e.
-Proof.
-  intros e He. exists norse_total_low.
-  unfold english_in_range, english_total_low, english_total_high,
-    norse_in_range, norse_total_low, norse_total_high in *.
-  split; lia.
-Qed.
-
-(* At the point estimates the English do outnumber the Norse. *)
 Theorem english_superiority_at_estimates :
-  force_total norse_force < force_total english_force.
+  force_total norse_field < force_total english_force.
 Proof. ground. Qed.
 
 (* =============================================================================
@@ -535,17 +551,17 @@ Proof. ground. Qed.
    ============================================================================= *)
 
 Inductive phase :=
-  | Approach        (* English deployment west of the Derwent [ASC-D] *)
-  | BridgeDefender  (* the lone Norse axeman holds the span [ASC-C] *)
-  | BridgeHold      (* English force the crossing [ASC-C] *)
-  | ShieldWall      (* the main action east of the river [HEIM] *)
-  | Rout.           (* Norse collapse and flight to Riccall [HEIM] *)
+  | Approach        (* English deployment west of the Derwent [ASC-C+] *)
+  | BridgeDefender  (* the lone Norseman holds the span [ASC-C+] *)
+  | BridgeHold      (* the English force the crossing [ASC-C+] *)
+  | ShieldWall      (* the main action at the shield ring [HEIM] *)
+  | Rout.           (* the Norse collapse and Orre's storm [HEIM] *)
 
 (* Six boundaries delimiting five consecutive phases. *)
 Record schedule := {
-  b0 : time;  (* Approach begins *)
-  b1 : time;  (* the axeman takes the bridge *)
-  b2 : time;  (* the axeman falls and the English force the span *)
+  b0 : time;  (* contact west of the river *)
+  b1 : time;  (* the Norseman takes the bridge *)
+  b2 : time;  (* he falls and the English force the span *)
   b3 : time;  (* the shield walls meet *)
   b4 : time;  (* Hardrada falls and the Norse break *)
   b5 : time   (* the pursuit ends *)
@@ -569,14 +585,14 @@ Definition phase_end (S : schedule) (p : phase) : time :=
 Definition phase_duration (S : schedule) (p : phase) : Z :=
   duration (phase_start S p) (phase_end S p).
 
-(* Nominal reconstruction: dawn approach, midday wall, mid-afternoon collapse. *)
+(* No source times the phases; the nominal reconstruction is [MODEL]. *)
 Definition nominal : schedule := {|
-  b0 := t_of d_sep25 8 0;
-  b1 := t_of d_sep25 9 30;
-  b2 := t_of d_sep25 10 30;
-  b3 := t_of d_sep25 11 30;
-  b4 := t_of d_sep25 14 30;
-  b5 := t_of d_sep25 16 0
+  b0 := t_of d_sep25 10 30;
+  b1 := t_of d_sep25 11 15;
+  b2 := t_of d_sep25 12 0;
+  b3 := t_of d_sep25 12 30;
+  b4 := t_of d_sep25 15 30;
+  b5 := t_of d_sep25 16 45
 |}.
 
 Lemma nominal_ordered : sched_ordered nominal.
@@ -595,11 +611,19 @@ Lemma phase_durations_sum : forall S,
   + phase_duration S Rout = duration (b0 S) (b5 S).
 Proof. intros; unfold phase_duration, duration; simpl; lia. Qed.
 
+Lemma nominal_phase_durations :
+  phase_duration nominal Approach = 45 /\
+  phase_duration nominal BridgeDefender = 45 /\
+  phase_duration nominal BridgeHold = 30 /\
+  phase_duration nominal ShieldWall = 180 /\
+  phase_duration nominal Rout = 75.
+Proof. ground. Qed.
+
 (* -----------------------------------------------------------------------------
    Uncertainty band on the schedule
    -------------------------------------------------------------------------- *)
 
-(* No source times the phases, so each boundary is admitted within half an hour. *)
+(* Each boundary is admitted within half an hour of its nominal time [MODEL]. *)
 Definition sched_tolerance : Z := 30.
 
 Definition near (t centre : time) : Prop :=
@@ -614,45 +638,75 @@ Definition sched_admissible (S : schedule) : Prop :=
 Lemma nominal_admissible : sched_admissible nominal.
 Proof. unfold sched_admissible, near, sched_tolerance; ground. Qed.
 
-(* Every admissible schedule keeps the whole action between sunrise and sunset. *)
-Theorem battle_within_daylight_robust : forall S,
-  sched_admissible S -> in_sep25_daylight (b0 S) /\ in_sep25_daylight (b5 S).
-Proof.
-  intros S HS. destruct HS as [Hord [H0 [H1 [H2 [H3 [H4 H5]]]]]].
-  unfold near, sched_tolerance, nominal, in_sep25_daylight, t_sep25_sunrise,
-    t_sep25_sunset, t_of, d_sep25, minutes_per_day, hours_per_day,
-    minutes_per_hour in *.
-  simpl in *. split; lia.
-Qed.
+Ltac admissible_bounds HS :=
+  destruct HS as [Hord [H0 [H1 [H2 [H3 [H4 H5]]]]]];
+  unfold near, sched_tolerance, nominal, t_of, d_sep25, minutes_per_day,
+    hours_per_day, minutes_per_hour in H0, H1, H2, H3, H4, H5;
+  cbn [b0 b1 b2 b3 b4 b5] in H0, H1, H2, H3, H4, H5;
+  unfold sched_ordered in Hord.
 
 Theorem every_phase_within_daylight_robust : forall S p,
   sched_admissible S ->
   in_sep25_daylight (phase_start S p) /\ in_sep25_daylight (phase_end S p).
 Proof.
-  intros S p HS. destruct HS as [Hord [H0 [H1 [H2 [H3 [H4 H5]]]]]].
-  unfold near, sched_tolerance, nominal, in_sep25_daylight, t_sep25_sunrise,
-    t_sep25_sunset, t_of, d_sep25, minutes_per_day, hours_per_day,
-    minutes_per_hour in *.
-  simpl in *. destruct p; simpl; split; lia.
+  intros S p HS. admissible_bounds HS.
+  unfold in_sep25_daylight, t_sep25_sunrise, t_sep25_sunset, t_of, d_sep25,
+    minutes_per_day, hours_per_day, minutes_per_hour.
+  destruct p; simpl; split; lia.
 Qed.
 
-Lemma nominal_phase_durations :
-  phase_duration nominal Approach = 90 /\
-  phase_duration nominal BridgeDefender = 60 /\
-  phase_duration nominal BridgeHold = 60 /\
-  phase_duration nominal ShieldWall = 180 /\
-  phase_duration nominal Rout = 90.
-Proof. ground. Qed.
+(* -----------------------------------------------------------------------------
+   The approach march from Tadcaster
+   -------------------------------------------------------------------------- *)
 
-Lemma nominal_battle_duration : duration (b0 nominal) (b5 nominal) = 480.
-Proof. ground. Qed.
+(* Harold went through York on the Monday [ASC-C], leaving Tadcaster at first light [MODEL]. *)
+Definition approach_minutes (mph : Z) : Z := ceil_div (60 * miles_Tadcaster_Stamford) mph.
+
+Definition approach_arrives_by (mph : Z) (t : time) : Prop :=
+  t_sep25_first_light + approach_minutes mph <= t.
+
+(* Contact at the nominal hour needs four miles an hour, and three is too slow. *)
+Theorem approach_pace_nominal : forall v, 0 < v ->
+  (approach_arrives_by v (b0 nominal) <-> 4 <= v).
+Proof.
+  intros v Hv. unfold approach_arrives_by.
+  assert (Hd : b0 nominal - t_sep25_first_light = 270) by ground.
+  assert (Hiff : approach_minutes v <= 270 <-> 4 <= v).
+  { unfold approach_minutes.
+    apply rate_threshold_iff; [ground | lia | ground | ground | exact Hv]. }
+  rewrite <- Hiff. lia.
+Qed.
+
+(* At five miles an hour the march reaches the field before every admissible contact. *)
+Theorem approach_pace_robust : forall S,
+  sched_admissible S -> approach_arrives_by 5 (b0 S).
+Proof.
+  intros S HS.
+  assert (Hm : approach_minutes 5 = 216) by ground.
+  unfold approach_arrives_by. rewrite Hm.
+  admissible_bounds HS.
+  unfold t_sep25_first_light, t_of, d_sep25, minutes_per_day, hours_per_day,
+    minutes_per_hour. lia.
+Qed.
+
+(* Four miles an hour misses the earliest admissible contact. *)
+Theorem approach_pace_robust_is_tight :
+  exists S, sched_admissible S /\ ~ approach_arrives_by 4 (b0 S).
+Proof.
+  exists {| b0 := t_of d_sep25 10 0; b1 := b1 nominal; b2 := b2 nominal;
+            b3 := b3 nominal; b4 := b4 nominal; b5 := b5 nominal |}.
+  split; [unfold sched_admissible, near, sched_tolerance; ground|].
+  assert (Hm : approach_minutes 4 = 270) by ground.
+  unfold approach_arrives_by. rewrite Hm.
+  unfold t_sep25_first_light, t_of, d_sep25, minutes_per_day, hours_per_day,
+    minutes_per_hour. cbn [b0]. lia.
+Qed.
 
 (* =============================================================================
    Phase-specific combat effectiveness
    ============================================================================= *)
 
-(* Weights out of ten for what each troop type is worth in each phase. *)
-(* Archers dominate the approach, mail the wall, light foot the pursuit. *)
+(* Weights out of ten for what each troop type is worth in each phase [MODEL]. *)
 Definition w_heavy (p : phase) : Z :=
   match p with
   | Approach => 6 | BridgeDefender => 10 | BridgeHold => 10
@@ -687,7 +741,7 @@ Proof.
   cbn [heavy light archers]; ring.
 Qed.
 
-(* Composition matters: equal totals differ in effectiveness by phase. *)
+(* Equal totals differ in effectiveness by phase. *)
 Theorem composition_is_not_headcount :
   let a := {| heavy := 1000; light := 0; archers := 0 |} in
   let b := {| heavy := 0; light := 1000; archers := 0 |} in
@@ -700,10 +754,10 @@ Proof. ground. Qed.
    Bridge geometry
    ============================================================================= *)
 
-Definition man_width_cm : Z := 60.        (* frontage of one man under arms *)
-Definition bridge_width_cm : Z := 240.    (* a narrow timber span [ASC-C] *)
-Definition axe_reach_cm : Z := 250.       (* arc swept by a two-handed axe [HEIM] *)
-Definition file_rate : Z := 3.            (* men per minute per file, contested *)
+Definition man_width_cm : Z := 60.        (* frontage of one man under arms [MODEL] *)
+Definition bridge_width_cm : Z := 240.    (* a narrow timber span [MODEL] *)
+Definition axe_reach_cm : Z := 250.       (* arc swept by a two-handed axe [MODEL] *)
+Definition file_rate : Z := 3.            (* men per minute per file, contested [MODEL] *)
 
 (* Men who fit abreast on a span of the given width. *)
 Definition frontage (w : Z) : Z := w / man_width_cm.
@@ -714,7 +768,6 @@ Proof. intros; unfold frontage; apply Z.div_le_mono; [unfold man_width_cm; lia|l
 Lemma frontage_nonneg : forall w, 0 <= w -> 0 <= frontage w.
 Proof. intros; unfold frontage; apply Z.div_pos; [lia | unfold man_width_cm; lia]. Qed.
 
-(* Frontage caps how many attackers can engage at once. *)
 Theorem frontage_caps_engagement : forall w n,
   0 <= w -> n * man_width_cm <= w -> n <= frontage w.
 Proof.
@@ -727,11 +780,11 @@ Qed.
 (* A defending line blocks a span when its swept arc covers the full width. *)
 Definition span_blocked (defenders w : Z) : Prop := w <= defenders * axe_reach_cm.
 
-(* One axeman covers a 240 cm span: the stand is geometry, not assertion [HEIM]. *)
+(* One axeman covers the span, as the one Norseman of [ASC-C+] held it. *)
 Theorem lone_axeman_blocks_bridge : span_blocked 1 bridge_width_cm.
 Proof. unfold span_blocked, bridge_width_cm, axe_reach_cm; lia. Qed.
 
-(* The same man could not block a span even one file wider. *)
+(* The same man could not block a span one file wider. *)
 Theorem lone_axeman_bound_is_tight :
   ~ span_blocked 1 (bridge_width_cm + man_width_cm).
 Proof. unfold span_blocked, bridge_width_cm, man_width_cm, axe_reach_cm; lia. Qed.
@@ -744,17 +797,12 @@ Definition bulk_crossing_rate : Z := max_crossing_rate bridge_width_cm.
 Lemma bulk_crossing_rate_value : bulk_crossing_rate = 12.
 Proof. ground. Qed.
 
-(* Widening the span is the only way to raise the ceiling. *)
 Theorem crossing_rate_from_width : forall w1 w2,
   w1 <= w2 -> max_crossing_rate w1 <= max_crossing_rate w2.
 Proof.
   intros w1 w2 H. unfold max_crossing_rate.
   apply Z.mul_le_mono_nonneg_r; [unfold file_rate; lia | apply frontage_mono; exact H].
 Qed.
-
-(* =============================================================================
-   Crossing under attrition
-   ============================================================================= *)
 
 (* Each surviving defender denies one file; a blocking line denies the span. *)
 Definition crossing_rate_at (w defenders : Z) : Z :=
@@ -768,7 +816,6 @@ Proof.
   apply Z.mul_nonneg_nonneg; [lia | unfold file_rate; lia].
 Qed.
 
-(* The rate never exceeds the width-derived ceiling. *)
 Theorem crossing_rate_bounded : forall w d,
   0 <= w -> 0 <= d -> crossing_rate_at w d <= max_crossing_rate w.
 Proof.
@@ -779,7 +826,6 @@ Proof.
   - apply Z.mul_le_mono_nonneg_r; [unfold file_rate; lia | lia].
 Qed.
 
-(* The rate rises as the defending line is thinned. *)
 Theorem crossing_rate_degrades_with_defenders : forall w d1 d2,
   0 <= w -> 0 <= d1 -> d1 <= d2 -> crossing_rate_at w d2 <= crossing_rate_at w d1.
 Proof.
@@ -794,7 +840,6 @@ Proof.
   - apply Z.mul_le_mono_nonneg_r; [unfold file_rate; lia | lia].
 Qed.
 
-(* The blocked span admits nobody, at any width the axe covers. *)
 Theorem blocked_span_admits_none : forall w d,
   span_blocked d w -> crossing_rate_at w d = 0.
 Proof.
@@ -806,7 +851,6 @@ Qed.
 Corollary lone_axeman_stops_the_crossing : crossing_rate_at bridge_width_cm 1 = 0.
 Proof. apply blocked_span_admits_none, lone_axeman_blocks_bridge. Qed.
 
-(* With the defender down, the span runs at its full geometric rate. *)
 Corollary cleared_span_runs_at_ceiling :
   crossing_rate_at bridge_width_cm 0 = bulk_crossing_rate.
 Proof. ground. Qed.
@@ -825,9 +869,9 @@ Definition attrit (f : force) (n : Z) : force :=
 
 (* Floor division makes the realised loss no larger than the nominal loss. *)
 Lemma attrit_total_lower_bound : forall f n,
-  0 < force_total f -> 0 <= n -> force_total f - n <= force_total (attrit f n).
+  0 < force_total f -> force_total f - n <= force_total (attrit f n).
 Proof.
-  intros f n Ht Hn. unfold attrit.
+  intros f n Ht. unfold attrit.
   destruct (Z.leb (force_total f) 0) eqn:E; [apply Z.leb_le in E; lia|].
   unfold force_total in *; simpl.
   remember (heavy f + light f + archers f) as tot eqn:Htot.
@@ -844,7 +888,6 @@ Proof.
   nia.
 Qed.
 
-(* Attrition never adds strength. *)
 Lemma attrit_total_upper_bound : forall f n,
   0 < force_total f -> 0 <= n -> force_wf f ->
   force_total (attrit f n) <= force_total f.
@@ -861,216 +904,355 @@ Proof.
   lia.
 Qed.
 
+(* Attrition never raises effectiveness in any phase. *)
+Lemma attrit_effectiveness_le : forall p f n,
+  force_wf f -> 0 <= n -> effectiveness p (attrit f n) <= effectiveness p f.
+Proof.
+  intros p f n [Hh [Hl Ha]] Hn. unfold attrit, force_total. cbv zeta.
+  destruct (Z.leb (heavy f + light f + archers f) 0) eqn:E; [lia|].
+  apply Z.leb_gt in E.
+  unfold effectiveness; cbn [heavy light archers].
+  assert (0 <= n * heavy f / (heavy f + light f + archers f))
+    by (apply Z.div_pos; nia).
+  assert (0 <= n * light f / (heavy f + light f + archers f))
+    by (apply Z.div_pos; nia).
+  assert (0 <= n * archers f / (heavy f + light f + archers f))
+    by (apply Z.div_pos; nia).
+  destruct p; cbv [w_heavy w_light w_archers]; lia.
+Qed.
+
+(* Losses a force inflicts across a phase, from its effectiveness, the clock and a divisor. *)
+Definition losses_at (div : Z) (S : schedule) (p : phase) (attacker : force) : Z :=
+  effectiveness p attacker * phase_duration S p / div.
+
+(* Divisors for the opening phases and the rout [MODEL]. *)
 Definition lethality (p : phase) : Z :=
   match p with
   | Approach => 60000        (* skirmish and missile exchange *)
-  | BridgeDefender => 400000 (* the blocked span costs almost nothing [ASC-C] *)
+  | BridgeDefender => 400000 (* the blocked span costs almost nothing *)
   | BridgeHold => 40000      (* forcing the span *)
-  | ShieldWall => 30000      (* the grinding main action [HEIM] *)
-  | Rout => 12000            (* broken men cut down in the open [HEIM] *)
+  | ShieldWall => 3500       (* losses the English take at the shield ring *)
+  | Rout => 12000            (* broken men and Orre's storm *)
   end.
 
 Lemma lethality_pos : forall p, 0 < lethality p.
 Proof. destruct p; unfold lethality; lia. Qed.
 
-(* Losses a force inflicts across a phase, from its effectiveness and the clock. *)
 Definition losses_inflicted (S : schedule) (p : phase) (attacker : force) : Z :=
-  effectiveness p attacker * phase_duration S p / lethality p.
+  losses_at (lethality p) S p attacker.
 
-Lemma losses_inflicted_nonneg : forall S p f,
-  force_wf f -> 0 <= phase_duration S p -> 0 <= losses_inflicted S p f.
+Lemma losses_at_nonneg : forall div S p f,
+  0 < div -> force_wf f -> 0 <= phase_duration S p -> 0 <= losses_at div S p f.
 Proof.
-  intros S p f Hf Hd. unfold losses_inflicted.
-  apply Z.div_pos; [| apply lethality_pos].
+  intros div S p f Hdiv Hf Hd. unfold losses_at.
+  apply Z.div_pos; [| exact Hdiv].
   apply Z.mul_nonneg_nonneg; [apply effectiveness_nonneg; exact Hf | exact Hd].
 Qed.
 
-(* A stronger force inflicts no fewer losses in the same phase. *)
-Theorem losses_monotone_in_effectiveness : forall S p f g,
-  0 <= phase_duration S p ->
-  effectiveness p f <= effectiveness p g ->
-  losses_inflicted S p f <= losses_inflicted S p g.
+(* Losses are bounded by any bound on the attacker's effectiveness and on the clock. *)
+Lemma losses_at_bounded : forall div S p f e0 d0,
+  0 < div -> effectiveness p f <= e0 -> 0 <= e0 ->
+  0 <= phase_duration S p <= d0 ->
+  losses_at div S p f <= e0 * d0 / div.
 Proof.
-  intros S p f g Hd Hfg. unfold losses_inflicted.
-  apply Z.div_le_mono; [apply lethality_pos|].
+  intros div S p f e0 d0 Hdiv He He0 Hd. unfold losses_at.
+  apply Z.div_le_mono; [exact Hdiv|]. nia.
+Qed.
+
+Theorem losses_monotone_in_effectiveness : forall div S p f g,
+  0 < div -> 0 <= phase_duration S p ->
+  effectiveness p f <= effectiveness p g ->
+  losses_at div S p f <= losses_at div S p g.
+Proof.
+  intros div S p f g Hdiv Hd Hfg. unfold losses_at.
+  apply Z.div_le_mono; [exact Hdiv|].
   apply Z.mul_le_mono_nonneg_r; assumption.
 Qed.
 
 (* =============================================================================
-   Battle trajectory
+   The bridge and the withdrawal
    ============================================================================= *)
 
 (* The west-bank force withdraws while the approach and the stand run. *)
 Definition withdrawal_window (S : schedule) : Z :=
   phase_duration S Approach + phase_duration S BridgeDefender.
 
-Definition eng_after_approach : force :=
-  attrit english_force (losses_inflicted nominal Approach norse_west).
-Definition nw_after_approach : force :=
-  attrit norse_west (losses_inflicted nominal Approach english_force).
+Definition eng_after_approach (S : schedule) : force :=
+  attrit english_force (losses_inflicted S Approach norse_west).
+Definition nw_after_approach (S : schedule) : force :=
+  attrit norse_west (losses_inflicted S Approach english_force).
 
-Definition eng_after_defender : force :=
-  attrit eng_after_approach (losses_inflicted nominal BridgeDefender nw_after_approach).
-Definition nw_after_defender : force :=
-  attrit nw_after_approach (losses_inflicted nominal BridgeDefender eng_after_approach).
+Definition eng_after_defender (S : schedule) : force :=
+  attrit (eng_after_approach S)
+         (losses_inflicted S BridgeDefender (nw_after_approach S)).
+Definition nw_after_defender (S : schedule) : force :=
+  attrit (nw_after_approach S)
+         (losses_inflicted S BridgeDefender (eng_after_approach S)).
 
-(* The span, not the fighting, decides how many west-bank men reach safety. *)
-Definition west_withdrawn_count : Z :=
-  Z.min (force_total nw_after_defender) (bulk_crossing_rate * withdrawal_window nominal).
+(* The span's crossing rate caps how many west-bank men reach the east bank. *)
+Definition west_withdrawn_count (S : schedule) : Z :=
+  Z.min (force_total (nw_after_defender S)) (bulk_crossing_rate * withdrawal_window S).
 
-Definition west_withdrawn : force :=
-  scale_force nw_after_defender west_withdrawn_count (force_total nw_after_defender).
+Definition west_withdrawn (S : schedule) : force :=
+  scale_force (nw_after_defender S) (west_withdrawn_count S)
+              (force_total (nw_after_defender S)).
 
-Definition west_remnant : force := sub_force nw_after_defender west_withdrawn.
+Definition west_remnant (S : schedule) : force :=
+  sub_force (nw_after_defender S) (west_withdrawn S).
 
-Definition eng_after_hold : force :=
-  attrit eng_after_defender (losses_inflicted nominal BridgeHold west_remnant).
+Definition eng_after_hold (S : schedule) : force :=
+  attrit (eng_after_defender S) (losses_inflicted S BridgeHold (west_remnant S)).
 
-(* The men who crossed reinforced the wall Hardrada formed east of the river [HEIM]. *)
-Definition norse_shieldwall : force := add_force norse_east west_withdrawn.
+(* The men who crossed joined the shield ring Hardrada formed east of the river [HEIM]. *)
+Definition norse_shieldwall (S : schedule) : force :=
+  add_force norse_east (west_withdrawn S).
 
-Definition eng_after_wall : force :=
-  attrit eng_after_hold (losses_inflicted nominal ShieldWall norse_shieldwall).
-Definition norse_after_wall : force :=
-  attrit norse_shieldwall (losses_inflicted nominal ShieldWall eng_after_hold).
-
-(* The bridge caps the withdrawal below the number of men who wanted to cross. *)
 Theorem bridge_caps_the_withdrawal :
-  west_withdrawn_count < force_total nw_after_defender.
+  west_withdrawn_count nominal < force_total (nw_after_defender nominal).
 Proof. ground. Qed.
 
-Theorem west_bank_losses_are_geometric :
-  force_total norse_west - force_total west_withdrawn = 1201.
-Proof. ground. Qed.
+(* Every admissible schedule leaves the withdrawal window at most two and a half hours. *)
+Lemma withdrawal_window_bounded : forall S,
+  sched_admissible S -> 0 <= withdrawal_window S <= 150.
+Proof.
+  intros S HS. admissible_bounds HS.
+  unfold withdrawal_window, phase_duration, duration, phase_start, phase_end. lia.
+Qed.
 
-(* The span binds for every admissible schedule, not only for the nominal one. *)
+Lemma withdrawal_window_bound_is_tight :
+  exists S, sched_admissible S /\ withdrawal_window S = 150.
+Proof.
+  exists {| b0 := t_of d_sep25 10 0; b1 := b1 nominal; b2 := t_of d_sep25 12 30;
+            b3 := t_of d_sep25 12 45; b4 := b4 nominal; b5 := b5 nominal |}.
+  split; [unfold sched_admissible, near, sched_tolerance; ground | ground].
+Qed.
+
+(* The west bank keeps at least 2906 men through the stand under every admissible schedule. *)
+Lemma west_bank_strength_robust : forall S,
+  sched_admissible S -> 2906 <= force_total (nw_after_defender S).
+Proof.
+  intros S HS.
+  assert (HA : 0 <= phase_duration S Approach <= 105 /\
+               0 <= phase_duration S BridgeDefender <= 105).
+  { admissible_bounds HS. unfold phase_duration, duration, phase_start, phase_end. lia. }
+  destruct HA as [HA HD].
+  assert (HlA : losses_inflicted S Approach english_force <= 82).
+  { unfold losses_inflicted.
+    pose proof (losses_at_bounded (lethality Approach) S Approach english_force
+                  (effectiveness Approach english_force) 105
+                  ltac:(ground) ltac:(lia) ltac:(ground) HA) as H.
+    assert (Hc : effectiveness Approach english_force * 105 / lethality Approach = 82)
+      by ground.
+    lia. }
+  assert (Hnw1 : 2918 <= force_total (nw_after_approach S)).
+  { unfold nw_after_approach.
+    pose proof (attrit_total_lower_bound norse_west
+                  (losses_inflicted S Approach english_force) ltac:(ground)).
+    assert (force_total norse_west = 3000) by ground. lia. }
+  assert (He1 : effectiveness BridgeDefender (eng_after_approach S)
+                <= effectiveness BridgeDefender english_force).
+  { unfold eng_after_approach. apply attrit_effectiveness_le; [exact english_force_wf|].
+    apply losses_at_nonneg; [ground | exact norse_west_wf | lia]. }
+  assert (HlD : losses_inflicted S BridgeDefender (eng_after_approach S) <= 12).
+  { unfold losses_inflicted.
+    pose proof (losses_at_bounded (lethality BridgeDefender) S BridgeDefender
+                  (eng_after_approach S) (effectiveness BridgeDefender english_force) 105
+                  ltac:(ground) He1 ltac:(ground) HD) as H.
+    assert (Hc : effectiveness BridgeDefender english_force * 105
+                 / lethality BridgeDefender = 12) by ground.
+    lia. }
+  unfold nw_after_defender.
+  pose proof (attrit_total_lower_bound (nw_after_approach S)
+                (losses_inflicted S BridgeDefender (eng_after_approach S))
+                ltac:(lia)).
+  lia.
+Qed.
+
+(* The span binds for every admissible schedule: the west bank cannot all withdraw. *)
 Theorem bridge_caps_the_withdrawal_robust : forall S,
   sched_admissible S ->
-  bulk_crossing_rate * withdrawal_window S < force_total nw_after_defender.
+  bulk_crossing_rate * withdrawal_window S < force_total (nw_after_defender S).
 Proof.
-  intros S HS. destruct HS as [Hord [H0 [H1 [H2 [H3 [H4 H5]]]]]].
-  assert (Hw : withdrawal_window S <= 210).
-  { unfold withdrawal_window, phase_duration, duration, phase_start, phase_end.
-    unfold near, sched_tolerance in H0, H2.
-    change (b0 nominal) with (t_of d_sep25 8 0) in H0.
-    change (b2 nominal) with (t_of d_sep25 10 30) in H2.
-    unfold t_of, d_sep25, minutes_per_day, hours_per_day, minutes_per_hour in H0, H2.
-    lia. }
-  assert (Hnn : 0 <= withdrawal_window S).
-  { unfold withdrawal_window, phase_duration, duration, phase_start, phase_end.
-    unfold sched_ordered in Hord. lia. }
-  assert (Hb : bulk_crossing_rate = 12) by ground.
-  assert (Hn : force_total nw_after_defender = 2925) by ground.
-  rewrite Hb, Hn. lia.
+  intros S HS.
+  pose proof (withdrawal_window_bounded S HS).
+  pose proof (west_bank_strength_robust S HS).
+  rewrite bulk_crossing_rate_value. lia.
 Qed.
 
-(* Each phase consumes the force that fights the next one. *)
-Theorem strength_decreases_monotonically :
-  force_total eng_after_wall < force_total eng_after_hold
-  /\ force_total eng_after_hold < force_total eng_after_defender
-  /\ force_total eng_after_defender < force_total eng_after_approach
-  /\ force_total eng_after_approach < force_total english_force.
-Proof. ground. Qed.
-
-(* Attrition feeds back into effectiveness, not only into headcount. *)
-Theorem attrition_reduces_effectiveness :
-  effectiveness ShieldWall norse_after_wall < effectiveness ShieldWall norse_shieldwall
-  /\ effectiveness Rout eng_after_wall < effectiveness Rout english_force.
-Proof. ground. Qed.
-
 (* =============================================================================
-   Rout threshold
+   The shield ring
    ============================================================================= *)
 
-(* A force breaks when the enemy holds three halves of its effectiveness. *)
-Definition rout_num : Z := 3.
-Definition rout_den : Z := 2.
+(* Divisors for the losses each side takes at the ring [MODEL]: the defenders on the
+   rise take one man for every three the same effectiveness costs the attackers. *)
+Definition wall_div_english : Z := lethality ShieldWall.
+Definition wall_div_norse : Z := 3 * wall_div_english.
 
-Definition routs (own enemy : Z) : Prop := rout_num * own <= rout_den * enemy.
+(* The two forces that meet at the ring under the nominal schedule, evaluated once. *)
+Definition english_at_ring : force := Eval vm_compute in eng_after_hold nominal.
+Definition norse_at_ring : force := Eval vm_compute in norse_shieldwall nominal.
 
-(* Hardrada's death cost the army the greater part of its cohesion [HEIM]. *)
+Lemma english_at_ring_eq : english_at_ring = eng_after_hold nominal.
+Proof. vm_compute; reflexivity. Qed.
+
+Lemma norse_at_ring_eq : norse_at_ring = norse_shieldwall nominal.
+Proof. vm_compute; reflexivity. Qed.
+
+Definition eng_after_wall_with (de : Z) : force :=
+  attrit english_at_ring (losses_at de nominal ShieldWall norse_at_ring).
+
+Definition norse_after_wall_with (dn : Z) : force :=
+  attrit norse_at_ring (losses_at dn nominal ShieldWall english_at_ring).
+
+Definition eng_after_wall : force := eng_after_wall_with wall_div_english.
+Definition norse_after_wall : force := norse_after_wall_with wall_div_norse.
+
+(* =============================================================================
+   The rout
+   ============================================================================= *)
+
+(* A force breaks when the enemy's effectiveness reaches q per cent of its own. *)
+Definition breaks (q own enemy : Z) : Prop := q * own <= 100 * enemy.
+Definition breaksb (q own enemy : Z) : bool := q * own <=? 100 * enemy.
+
+Lemma breaksb_spec : forall q own enemy, breaksb q own enemy = true <-> breaks q own enemy.
+Proof. intros; unfold breaksb, breaks; apply Z.leb_le. Qed.
+
+(* Hardrada's fall cost the line part of its cohesion [HEIM]; the share kept [MODEL]. *)
 Definition leaderless_pct : Z := 60.
 
-Definition led_effectiveness (p : phase) (f : force) (leader_alive : bool) : Z :=
-  if leader_alive then effectiveness p f
-  else effectiveness p f * leaderless_pct / 100.
+Definition led_effectiveness (pct : Z) (f : force) : Z :=
+  effectiveness ShieldWall f * pct / 100.
 
-Definition norse_eff_led : Z := led_effectiveness ShieldWall norse_after_wall true.
-Definition norse_eff_leaderless : Z := led_effectiveness ShieldWall norse_after_wall false.
-Definition english_eff_at_wall : Z := effectiveness ShieldWall eng_after_wall.
+Definition norse_eff_led_with (dn : Z) : Z := effectiveness ShieldWall (norse_after_wall_with dn).
+Definition norse_eff_leaderless_with (dn pct : Z) : Z :=
+  led_effectiveness pct (norse_after_wall_with dn).
+Definition english_eff_at_wall_with (de : Z) : Z :=
+  effectiveness ShieldWall (eng_after_wall_with de).
+
+Definition norse_eff_led : Z := norse_eff_led_with wall_div_norse.
+Definition norse_eff_leaderless : Z := norse_eff_leaderless_with wall_div_norse leaderless_pct.
+Definition english_eff_at_wall : Z := english_eff_at_wall_with wall_div_english.
+
+(* The narrative at the ring: the Norse hold while Hardrada stands, break when he falls,
+   and the English never break. *)
+Definition narrative_at (q nled nll e : Z) : Prop :=
+  ~ breaks q nled e /\ breaks q nll e /\ ~ breaks q e nled.
+
+Definition narrative_atb (q nled nll e : Z) : bool :=
+  negb (breaksb q nled e) && breaksb q nll e && negb (breaksb q e nled).
+
+Lemma narrative_atb_spec : forall q nled nll e,
+  narrative_atb q nled nll e = true -> narrative_at q nled nll e.
+Proof.
+  intros q nled nll e H. unfold narrative_atb in H.
+  apply andb_true_iff in H as [H H3]. apply andb_true_iff in H as [H1 H2].
+  apply negb_true_iff in H1, H3.
+  unfold narrative_at, breaks. unfold breaksb in *.
+  apply Z.leb_le in H2. apply Z.leb_gt in H1, H3. lia.
+Qed.
 
 Lemma rout_inputs :
-  norse_eff_led = 46175 /\ norse_eff_leaderless = 27705
-  /\ english_eff_at_wall = 59243.
+  norse_eff_led = 19120 /\ norse_eff_leaderless = 11472
+  /\ english_eff_at_wall = 53596.
 Proof. ground. Qed.
 
-(* While Hardrada stood, the ratio was under the threshold and the line held. *)
-Theorem no_rout_while_hardrada_stands :
-  ~ routs norse_eff_led english_eff_at_wall.
+(* The thresholds that reproduce the narrative form exactly one interval. *)
+Theorem rout_threshold_band : forall q,
+  narrative_at q norse_eff_led norse_eff_leaderless english_eff_at_wall
+  <-> 281 <= q <= 467.
 Proof.
-  destruct rout_inputs as [H1 [H2 H3]].
-  unfold routs, rout_num, rout_den. rewrite H1, H3. lia.
+  intros q. destruct rout_inputs as [H1 [H2 H3]].
+  rewrite H1, H2, H3. unfold narrative_at, breaks. lia.
 Qed.
 
-(* His fall carries the ratio across, and the break follows from the model. *)
-Theorem rout_follows_hardradas_fall :
-  routs norse_eff_leaderless english_eff_at_wall.
-Proof.
-  destruct rout_inputs as [H1 [H2 H3]].
-  unfold routs, rout_num, rout_den. rewrite H2, H3. lia.
-Qed.
+(* The threshold used below, the middle of that band [MODEL]. *)
+Definition rout_q : Z := 374.
 
-(* The English were never near breaking on the same criterion. *)
-Theorem english_never_rout : ~ routs english_eff_at_wall norse_eff_led.
-Proof.
-  destruct rout_inputs as [H1 [H2 H3]].
-  unfold routs, rout_num, rout_den. rewrite H1, H3. lia.
-Qed.
+Lemma rout_q_in_band : 281 <= rout_q <= 467.
+Proof. unfold rout_q; lia. Qed.
 
-(* The trigger is the leader loss: nothing else about the phase changed. *)
-Theorem rout_trigger_is_the_leader_loss :
-  ~ routs norse_eff_led english_eff_at_wall
-  /\ routs norse_eff_leaderless english_eff_at_wall
-  /\ norse_eff_leaderless < norse_eff_led.
+Theorem no_rout_while_hardrada_stands : ~ breaks rout_q norse_eff_led english_eff_at_wall.
+Proof. exact (proj1 (proj2 (rout_threshold_band rout_q) rout_q_in_band)). Qed.
+
+Theorem rout_follows_hardradas_fall : breaks rout_q norse_eff_leaderless english_eff_at_wall.
+Proof. exact (proj1 (proj2 (proj2 (rout_threshold_band rout_q) rout_q_in_band))). Qed.
+
+Theorem english_never_rout : ~ breaks rout_q english_eff_at_wall norse_eff_led.
+Proof. exact (proj2 (proj2 (proj2 (rout_threshold_band rout_q) rout_q_in_band))). Qed.
+
+(* At that threshold the break follows the fall for every retained share up to 74%,
+   and a share of 75% or more keeps the line standing. *)
+Theorem leaderless_share_band : forall pct, 0 <= pct <= 100 ->
+  (breaks rout_q (norse_eff_leaderless_with wall_div_norse pct) english_eff_at_wall
+   <-> pct <= 74).
 Proof.
-  split; [apply no_rout_while_hardrada_stands|].
-  split; [apply rout_follows_hardradas_fall|].
-  destruct rout_inputs as [H1 [H2 H3]]. rewrite H1, H2. lia.
+  intros pct Hp.
+  assert (Hc : all_in (fun p => Bool.eqb
+                  (breaksb rout_q (norse_eff_leaderless_with wall_div_norse p)
+                           english_eff_at_wall)
+                  (p <=? 74)) 0 (Z.to_nat (100 - 0 + 1)) = true) by (vm_compute; reflexivity).
+  pose proof (all_in_range _ 0 100 Hc pct Hp) as H. simpl in H.
+  apply Bool.eqb_prop in H. rewrite <- breaksb_spec, H. apply Z.leb_le.
 Qed.
 
 (* =============================================================================
-   Pursuit, Norse losses, and the returning ships
+   Pursuit, Orre's storm, and the returning ships
    ============================================================================= *)
 
-Definition flight_miles : Z := miles_Stamford_Riccall.  (* flight to the ships [HEIM] *)
-Definition flight_speed_mph : Z := 4.                   (* broken men, part in mail *)
-Definition pursuit_speed_mph : Z := 5.                  (* English light foot *)
+Definition flight_miles : Z := miles_Stamford_Riccall.
+Definition flight_speed_mph : Z := 4.                   (* broken men, part in mail [MODEL] *)
+Definition pursuit_speed_mph : Z := 5.                  (* English light foot [MODEL] *)
 
 (* Head start, in minutes, at which a fugitive reaches the ships uncaught. *)
 Definition escape_head_start : Z :=
   60 * flight_miles * (pursuit_speed_mph - flight_speed_mph)
   / (flight_speed_mph * pursuit_speed_mph).
 
-(* Eystein Orre's counterattack delayed the English pursuit [HEIM]. *)
+(* Eystein Orre's men came up from the ships and held the pursuit [HEIM]; delay [MODEL]. *)
 Definition pursuit_delay : Z := 60.
 
-Definition escape_window : Z := Z.max 0 (pursuit_delay - escape_head_start).
+Definition escape_window_with (d : Z) : Z := Z.max 0 (d - escape_head_start).
 
-Definition road_width_cm : Z := 480.   (* the Riccall track out of the field *)
-Definition flight_file_rate : Z := 5.  (* men per minute per file, running *)
+Definition road_width_cm : Z := 480.   (* the track out of the field [MODEL] *)
+Definition flight_file_rate : Z := 5.  (* men per minute per file, running [MODEL] *)
 
 Definition break_rate (fr : Z) : Z := frontage road_width_cm * fr.
 
-Definition escaped_with (fr : Z) : Z :=
-  Z.min (force_total norse_after_wall) (break_rate fr * escape_window).
+(* Olaf stayed with the ships [HEIM]; the guard left with him [MODEL]. *)
+Definition ship_guard : Z := 150.
 
-Definition norse_escaped : Z := escaped_with flight_file_rate.
-Definition norse_losses_total : Z := force_total norse_force - norse_escaped.
+(* Orre's men were for the most part killed [HEIM]; only the ship guard survives them. *)
+Definition orre_force : force :=
+  scale_force norse_reserve (force_total norse_reserve - ship_guard) (force_total norse_reserve).
 
-Lemma escape_head_start_value : escape_head_start = 36.
+Definition survivors_with (fr d : Z) : Z :=
+  Z.min (force_total norse_after_wall) (break_rate fr * escape_window_with d) + ship_guard.
+
+Definition norse_survivors : Z := survivors_with flight_file_rate pursuit_delay.
+Definition norse_losses_total : Z := force_total norse_force - norse_survivors.
+
+Lemma escape_head_start_value : escape_head_start = 39.
 Proof. ground. Qed.
 
-Lemma escape_window_value : escape_window = 24.
+Lemma pursuit_inputs :
+  force_total norse_after_wall = 3035 /\ frontage road_width_cm = 8
+  /\ force_total norse_force = 9000.
+Proof. ground. Qed.
+
+(* While the fugitives the road lets through number fewer than the survivors of the ring,
+   the survivors are linear in the flight rate and the delay. *)
+Lemma survivors_formula : forall fr d,
+  0 <= fr -> 39 <= d -> 8 * fr * (d - 39) <= 3035 ->
+  survivors_with fr d = 8 * fr * (d - 39) + 150.
+Proof.
+  intros fr d Hfr Hd Hcap. destruct pursuit_inputs as [Hn [Hf _]].
+  unfold survivors_with, escape_window_with, break_rate, ship_guard.
+  rewrite Hn, Hf, escape_head_start_value.
+  rewrite Z.max_r by lia. rewrite Z.min_r by lia. ring.
+Qed.
+
+Lemma norse_survivors_value : norse_survivors = 990.
 Proof. ground. Qed.
 
 (* Pursuit faster than flight is what makes the head start finite. *)
@@ -1078,136 +1260,188 @@ Theorem escape_needs_a_head_start :
   flight_speed_mph < pursuit_speed_mph /\ 0 < escape_head_start.
 Proof. ground. Qed.
 
-(* The Norse loss follows from the pursuit geometry, not from a chosen fraction. *)
 Theorem norse_losses_exceed_four_fifths :
   8 * force_total norse_force <= 10 * norse_losses_total.
 Proof. ground. Qed.
 
-Theorem norse_loss_fraction : 100 * norse_losses_total / force_total norse_force = 89.
-Proof. ground. Qed.
+Definition four_fifths_lost (s : Z) : Prop := 8 * 9000 <= 10 * (9000 - s).
 
-(* Model inputs to the pursuit, fixed once and reused by the robustness bounds. *)
-Lemma pursuit_inputs :
-  force_total norse_after_wall = 7435 /\ frontage road_width_cm = 8
-  /\ force_total norse_force = 9000.
-Proof. ground. Qed.
-
-(* The result survives the whole plausible band of flight rates. *)
-Theorem norse_losses_robust_in_flight_rate : forall fr,
-  1 <= fr <= 9 ->
-  8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with fr).
+(* Four fifths are lost for every flight rate up to nine men per file per minute. *)
+Theorem norse_losses_band_in_flight_rate : forall fr,
+  0 <= fr <= 10 -> (four_fifths_lost (survivors_with fr pursuit_delay) <-> fr <= 9).
 Proof.
-  intros fr Hfr. destruct pursuit_inputs as [Hn [Hf Ht]].
-  unfold escaped_with, break_rate.
-  rewrite Hn, Hf, Ht, escape_window_value.
-  rewrite Z.min_r by lia. lia.
+  intros fr Hfr. unfold pursuit_delay.
+  rewrite survivors_formula by lia. unfold four_fifths_lost. lia.
 Qed.
 
-(* Nine men per file per minute is the exact edge of that band. *)
-Theorem flight_rate_band_is_tight :
-  8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with 9)
-  /\ ~ (8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with 10)).
+(* Four fifths are lost for every pursuit delay up to 80 minutes. *)
+Theorem norse_losses_band_in_pursuit_delay : forall d,
+  39 <= d <= 90 -> (four_fifths_lost (survivors_with flight_file_rate d) <-> d <= 80).
 Proof.
-  assert (H9 : escaped_with 9 = 1728) by ground.
-  assert (H10 : escaped_with 10 = 1920) by ground.
-  destruct pursuit_inputs as [_ [_ Ht]].
-  rewrite H9, H10, Ht. split; lia.
-Qed.
-
-(* The result likewise survives the band of admissible pursuit delays. *)
-Definition escaped_with_delay (d : Z) : Z :=
-  Z.min (force_total norse_after_wall)
-        (break_rate flight_file_rate * Z.max 0 (d - escape_head_start)).
-
-Theorem norse_losses_robust_in_pursuit_delay : forall d,
-  escape_head_start <= d <= 81 ->
-  8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with_delay d).
-Proof.
-  intros d Hd. rewrite escape_head_start_value in Hd.
-  destruct pursuit_inputs as [Hn [Hf Ht]].
-  unfold escaped_with_delay, break_rate, flight_file_rate.
-  rewrite Hn, Hf, Ht, escape_head_start_value.
-  rewrite Z.min_r by lia. lia.
-Qed.
-
-Theorem pursuit_delay_band_is_tight :
-  8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with_delay 81)
-  /\ ~ (8 * force_total norse_force
-        <= 10 * (force_total norse_force - escaped_with_delay 82)).
-Proof.
-  assert (H81 : escaped_with_delay 81 = 1800) by ground.
-  assert (H82 : escaped_with_delay 82 = 1840) by ground.
-  destruct pursuit_inputs as [_ [_ Ht]].
-  rewrite H81, H82, Ht. split; lia.
+  intros d Hd. unfold flight_file_rate.
+  rewrite survivors_formula by lia. unfold four_fifths_lost. lia.
 Qed.
 
 (* -----------------------------------------------------------------------------
    The twenty-four ships
    -------------------------------------------------------------------------- *)
 
-(* Olaf sailed home with the survivors in twenty-four ships [HEIM]. *)
+(* The king let the survivors go home with twenty-four ships [ASC-D]. *)
 Definition ships_reported : Z := 24.
-Definition ship_capacity_low : Z := 30.
-Definition ship_capacity_high : Z := 50.
+Definition ship_capacity_low : Z := 30.   (* [MODEL] *)
+Definition ship_capacity_high : Z := 50.  (* [MODEL] *)
 
 Definition ships_for (men capacity : Z) : Z := ceil_div men capacity.
 
-(* The survivors the model leaves need a hull count bracketing the reported figure. *)
-Theorem reported_ships_within_model_bracket :
-  ships_for norse_escaped ship_capacity_high <= ships_reported
-  <= ships_for norse_escaped ship_capacity_low.
-Proof. ground. Qed.
+(* The reported fleet is between the fewest and the most hulls the survivors need. *)
+Definition ships_bracket (men : Z) : Prop :=
+  ships_for men ship_capacity_high <= ships_reported <= ships_for men ship_capacity_low.
 
-Theorem ships_bracket_values :
-  ships_for norse_escaped ship_capacity_low = 32
-  /\ ships_for norse_escaped ship_capacity_high = 20.
-Proof. ground. Qed.
-
-(* The bracket holds over the whole capacity range, not at one chosen capacity. *)
-Theorem ships_bracket_robust : forall c,
-  ship_capacity_low <= c <= ship_capacity_high ->
-  ships_for norse_escaped ship_capacity_high <= ships_for norse_escaped c.
+(* The bracket holds for exactly the survivor counts from 691 to 1200. *)
+Theorem ships_bracket_iff : forall men, (ships_bracket men <-> 691 <= men <= 1200).
 Proof.
-  intros c Hc. unfold ship_capacity_low, ship_capacity_high in Hc.
-  unfold ships_for. apply ceil_div_anti_mono; [ground | lia | unfold ship_capacity_high; lia].
+  intros men. unfold ships_bracket, ships_for, ships_reported,
+    ship_capacity_low, ship_capacity_high.
+  rewrite (ceil_div_le_iff men 50 24) by lia.
+  assert (Hlow : 24 <= ceil_div men 30 <-> 691 <= men).
+  { split.
+    - intros H. destruct (Z.le_gt_cases 691 men) as [Hge|Hlt]; [exact Hge|].
+      assert (ceil_div men 30 <= 23) by (apply ceil_div_le; lia). lia.
+    - intros H. destruct (Z.le_gt_cases 24 (ceil_div men 30)) as [Hge|Hlt]; [exact Hge|].
+      assert (men <= 23 * 30) by (apply (ceil_div_le_iff men 30 23); lia). lia. }
+  rewrite <- Hlow. lia.
+Qed.
+
+Theorem reported_ships_within_model_bracket : ships_bracket norse_survivors.
+Proof. apply ships_bracket_iff. rewrite norse_survivors_value. lia. Qed.
+
+(* The ships fix the flight rate: they fit flight rates four to six and no others. *)
+Theorem ships_fix_the_flight_rate : forall fr,
+  0 <= fr <= 10 -> (ships_bracket (survivors_with fr pursuit_delay) <-> 4 <= fr <= 6).
+Proof.
+  intros fr Hfr. rewrite ships_bracket_iff. unfold pursuit_delay.
+  rewrite survivors_formula by lia. lia.
+Qed.
+
+(* The ships fix the pursuit delay to between 53 and 65 minutes. *)
+Theorem ships_fix_the_pursuit_delay : forall d,
+  39 <= d <= 90 -> (ships_bracket (survivors_with flight_file_rate d) <-> 53 <= d <= 65).
+Proof.
+  intros d Hd. rewrite ships_bracket_iff. unfold flight_file_rate.
+  rewrite survivors_formula by lia. lia.
 Qed.
 
 (* =============================================================================
-   English losses and the post-battle march rate
+   English losses
    ============================================================================= *)
 
-Definition rout_efficiency_pct : Z := 10.  (* what a broken force still returns *)
+Definition rout_efficiency_pct : Z := 10.  (* what a broken line still returns [MODEL] *)
+(* Orre's men ran from the ships in mail [HEIM]; the share of effectiveness kept [MODEL]. *)
+Definition orre_efficiency_pct : Z := 50.
 
-Definition norse_routed : force :=
-  scale_force norse_after_wall rout_efficiency_pct 100.
+(* Orre's contribution to the rout, evaluated once. *)
+Definition orre_in_rout : force :=
+  Eval vm_compute in scale_force orre_force orre_efficiency_pct 100.
 
-Definition eng_after_rout : force :=
-  attrit eng_after_wall (losses_inflicted nominal Rout norse_routed).
+Lemma orre_in_rout_eq : orre_in_rout = scale_force orre_force orre_efficiency_pct 100.
+Proof. vm_compute; reflexivity. Qed.
 
-Definition english_losses_total : Z :=
-  force_total english_force - force_total eng_after_rout.
+Definition rout_attackers_with (dn : Z) : force :=
+  add_force (scale_force (norse_after_wall_with dn) rout_efficiency_pct 100) orre_in_rout.
 
-Lemma english_losses_value : english_losses_total = 353.
+Definition eng_after_rout_with (de dn : Z) : force :=
+  attrit (eng_after_wall_with de) (losses_inflicted nominal Rout (rout_attackers_with dn)).
+
+Definition english_losses_with (de dn : Z) : Z :=
+  force_total english_force - force_total (eng_after_rout_with de dn).
+
+Definition english_losses_total : Z := english_losses_with wall_div_english wall_div_norse.
+
+Lemma english_losses_value : english_losses_total = 1406.
 Proof. ground. Qed.
 
-(* The English lost an order of magnitude fewer men than the Norse. *)
-Theorem english_losses_far_below_norse :
-  10 * english_losses_total < norse_losses_total.
+(* The tradition calls the English losses heavy; heavy is a tenth to a third [MODEL]. *)
+Definition english_heavy_low : Z := 1100.
+Definition english_heavy_high : Z := 3666.
+
+Theorem english_losses_heavy :
+  english_heavy_low <= english_losses_total <= english_heavy_high.
+Proof. ground. Qed.
+
+Theorem norse_losses_exceed_english_fivefold :
+  5 * english_losses_total < norse_losses_total.
 Proof. ground. Qed.
 
 (* -----------------------------------------------------------------------------
-   Marching strength after the battle
+   Robustness in the shield-ring divisors
    -------------------------------------------------------------------------- *)
 
-Definition fatigue_pct : Z := 70.        (* march capacity the day after the battle *)
-Definition recovery_per_day : Z := 6.    (* percentage points regained per rest day *)
+(* Every headline conclusion of the battle, as one boolean check on the two divisors. *)
+Definition battle_outcome_ok (de dn : Z) : bool :=
+  let el := english_losses_with de dn in
+  (english_heavy_low <=? el) && (el <=? english_heavy_high)
+  && narrative_atb rout_q (norse_eff_led_with dn)
+       (norse_eff_leaderless_with dn leaderless_pct) (english_eff_at_wall_with de)
+  && (8 * force_total norse_force <=? 10 * (force_total norse_force
+        - (Z.min (force_total (norse_after_wall_with dn))
+                 (break_rate flight_file_rate * escape_window_with pursuit_delay)
+           + ship_guard))).
+
+Lemma battle_outcome_ok_spec : forall de dn,
+  battle_outcome_ok de dn = true ->
+  english_heavy_low <= english_losses_with de dn <= english_heavy_high
+  /\ narrative_at rout_q (norse_eff_led_with dn)
+       (norse_eff_leaderless_with dn leaderless_pct) (english_eff_at_wall_with de).
+Proof.
+  intros de dn H. unfold battle_outcome_ok in H.
+  apply andb_true_iff in H as [H _].
+  apply andb_true_iff in H as [H Hn].
+  apply andb_true_iff in H as [Hl Hh].
+  apply Z.leb_le in Hl, Hh.
+  split; [lia | apply narrative_atb_spec; exact Hn].
+Qed.
+
+Lemma battle_outcome_nominal : battle_outcome_ok wall_div_english wall_div_norse = true.
+Proof. vm_compute; reflexivity. Qed.
+
+(* The English divisor may range over 1424..4551 with the Norse divisor fixed. *)
+Theorem battle_robust_in_english_divisor : forall de,
+  1424 <= de <= 4551 -> battle_outcome_ok de wall_div_norse = true.
+Proof.
+  apply (all_in_range (fun de => battle_outcome_ok de wall_div_norse)).
+  vm_compute; reflexivity.
+Qed.
+
+(* The Norse divisor may range over 6072..38072 with the English divisor fixed. *)
+Theorem battle_robust_in_norse_divisor : forall dn,
+  6072 <= dn <= 38072 -> battle_outcome_ok wall_div_english dn = true.
+Proof.
+  apply (all_in_range (fun dn => battle_outcome_ok wall_div_english dn)).
+  vm_compute; reflexivity.
+Qed.
+
+Theorem battle_divisor_bands_are_tight :
+  battle_outcome_ok 1423 wall_div_norse = false
+  /\ battle_outcome_ok 4552 wall_div_norse = false
+  /\ battle_outcome_ok wall_div_english 6071 = false
+  /\ battle_outcome_ok wall_div_english 38073 = false.
+Proof. vm_compute; repeat split; reflexivity. Qed.
+
+(* =============================================================================
+   The southward march, with the London halt
+   ============================================================================= *)
+
+(* The host's march rate, fresh, in miles a day [MODEL]. *)
+Definition rate_south_base : Z := 30.
+Definition rate_north : Z := 40.   (* the forced march to Tadcaster [MODEL] *)
+
+(* March capacity after r rest days, recovering from the battle [MODEL]. *)
+Definition fatigue_pct : Z := 70.
+Definition recovery_per_day : Z := 6.
 
 Definition recovered_pct (rest : Z) : Z := Z.min 100 (fatigue_pct + recovery_per_day * rest).
 
-(* Rate scales with surviving strength and with recovery, both derived. *)
-Definition march_rate_after (rest : Z) : Z :=
-  rate_south_base * force_total eng_after_rout * recovered_pct rest
-  / (force_total english_force * 100).
+Definition march_rate_after (base rest : Z) : Z := base * recovered_pct rest / 100.
 
 Lemma recovered_pct_caps_at_full : forall rest, 5 <= rest -> recovered_pct rest = 100.
 Proof.
@@ -1215,222 +1449,193 @@ Proof.
   apply Z.min_l. lia.
 Qed.
 
-Lemma march_rate_full_recovery : forall rest, 5 <= rest -> march_rate_after rest = 29.
+Lemma march_rate_full_recovery : forall base rest,
+  5 <= rest -> march_rate_after base rest = base.
 Proof.
-  intros rest H. unfold march_rate_after.
-  rewrite (recovered_pct_caps_at_full rest H). ground.
+  intros base rest H. unfold march_rate_after.
+  rewrite (recovered_pct_caps_at_full rest H). apply Z.div_mul. lia.
 Qed.
 
-(* Unrested, the depleted army marches nine miles a day slower. *)
-Theorem fatigue_costs_march_rate :
-  march_rate_after 0 = 20 /\ march_rate_after 5 = 29
-  /\ march_rate_after 0 < rate_south_base.
+(* The host leaves York after r rest days, halts h whole days in London, and must
+   stand at Senlac by 13 October. *)
+Definition york_departure (rest : Z) : day := d_sep25 + 1 + rest.
+
+Definition london_arrival (base rest : Z) : day :=
+  york_departure rest + travel_days miles_London_York (march_rate_after base rest) - 1.
+
+Definition london_departure (base rest halt : Z) : day :=
+  london_arrival base rest + 1 + halt.
+
+Definition senlac_arrival (base rest halt : Z) : day :=
+  london_departure base rest halt
+  + travel_days miles_London_Hastings (march_rate_after base rest) - 1.
+
+Definition itinerary_feasible (base rest halt : Z) : Prop :=
+  senlac_arrival base rest halt <= d_oct13.
+
+(* The historical plan: five rest days at York, four whole days in London. *)
+Definition historical_rest : Z := 5.
+Definition historical_halt : Z := 4.
+
+Theorem historical_itinerary_matches_dates :
+  york_departure historical_rest = d_oct01
+  /\ london_arrival rate_south_base historical_rest = d_oct07
+  /\ london_departure rate_south_base historical_rest historical_halt = d_oct12
+  /\ senlac_arrival rate_south_base historical_rest historical_halt = d_oct13.
 Proof. ground. Qed.
 
-Lemma march_rate_after_pos : forall rest, 0 <= rest -> 0 < march_rate_after rest.
+(* The whole London halt that each choice of rest leaves, at the base rate. *)
+Definition halt_budget (rest : Z) : Z :=
+  if rest <? 3 then 5 else if rest <? 5 then 4 else 9 - rest.
+
+Lemma senlac_arrival_halt : forall base rest halt,
+  senlac_arrival base rest halt = senlac_arrival base rest 0 + halt.
+Proof. intros. unfold senlac_arrival, london_departure. lia. Qed.
+
+(* The feasible region is exactly the halts within the budget. *)
+Theorem itinerary_region : forall rest halt,
+  0 <= rest -> 0 <= halt ->
+  (itinerary_feasible rate_south_base rest halt <-> halt <= halt_budget rest).
 Proof.
-  intros rest H.
+  intros rest halt Hr Hh. unfold itinerary_feasible.
+  rewrite senlac_arrival_halt.
   destruct (Z.le_gt_cases 5 rest) as [H5|H5].
-  - rewrite march_rate_full_recovery by exact H5; lia.
-  - assert (Hr : rest = 0 \/ rest = 1 \/ rest = 2 \/ rest = 3 \/ rest = 4) by lia.
-    destruct Hr as [E|[E|[E|[E|E]]]]; rewrite E; ground.
+  - assert (Hb : senlac_arrival rate_south_base rest 0 = 33 + rest).
+    { unfold senlac_arrival, london_departure, london_arrival, york_departure.
+      rewrite (march_rate_full_recovery rate_south_base rest H5).
+      assert (travel_days miles_London_York rate_south_base = 7) by ground.
+      assert (travel_days miles_London_Hastings rate_south_base = 2) by ground.
+      unfold d_sep25. lia. }
+    rewrite Hb. unfold halt_budget, d_oct13.
+    destruct (rest <? 3) eqn:E3; [apply Z.ltb_lt in E3; lia|].
+    destruct (rest <? 5) eqn:E5; [apply Z.ltb_lt in E5; lia|]. lia.
+  - assert (Hc : rest = 0 \/ rest = 1 \/ rest = 2 \/ rest = 3 \/ rest = 4) by lia.
+    destruct Hc as [E|[E|[E|[E|E]]]]; subst rest;
+      [ assert (Hb : senlac_arrival rate_south_base 0 0 = 37) by ground
+      | assert (Hb : senlac_arrival rate_south_base 1 0 = 37) by ground
+      | assert (Hb : senlac_arrival rate_south_base 2 0 = 37) by ground
+      | assert (Hb : senlac_arrival rate_south_base 3 0 = 38) by ground
+      | assert (Hb : senlac_arrival rate_south_base 4 0 = 38) by ground ];
+      rewrite Hb; unfold d_oct13;
+      match goal with
+      | |- context [halt_budget ?r] =>
+          let v := eval vm_compute in (halt_budget r) in change (halt_budget r) with v
+      end; lia.
 Qed.
 
-Definition post_battle_rate : Z := march_rate_after 5.
-
-Lemma post_battle_rate_value : post_battle_rate = 29.
-Proof. unfold post_battle_rate; apply march_rate_full_recovery; lia. Qed.
-
-(* =============================================================================
-   Per-leg interval containment
-   ============================================================================= *)
-
-Definition leg1_depart : day := d_sep20.   (* London, 20 September [ASC-C] *)
-Definition leg1_arrive : day := d_sep24.   (* Tadcaster, 24 September [ASC-C] *)
-Definition leg3a_depart : day := d_oct01.  (* York, 1 October [JW] *)
-Definition leg3a_arrive : day := d_oct07.  (* London, 7 October [JW] *)
-Definition leg3b_depart : day := d_oct12.  (* London, 12 October [JW] *)
-Definition leg3b_arrive : day := d_oct13.  (* Senlac, 13 October [JW] *)
-
-Theorem leg1_fits : leg_fits leg1_depart leg1_arrive miles_London_York rate_north.
-Proof. ground. Qed.
-
-Theorem leg3a_fits : leg_fits leg3a_depart leg3a_arrive miles_London_York post_battle_rate.
-Proof. ground. Qed.
-
-Theorem leg3b_fits :
-  leg_fits leg3b_depart leg3b_arrive miles_London_Hastings post_battle_rate.
-Proof. ground. Qed.
-
-(* The battle occupies its own day, inside its own daylight. *)
-Theorem battle_fits_its_day :
-  d_sep24 < d_sep25 < d_oct01
-  /\ in_sep25_daylight (b0 nominal) /\ in_sep25_daylight (b5 nominal).
+(* The historical plan lies on the boundary: one more day at York or in London fails. *)
+Theorem historical_itinerary_has_no_slack :
+  itinerary_feasible rate_south_base historical_rest historical_halt
+  /\ ~ itinerary_feasible rate_south_base (historical_rest + 1) historical_halt
+  /\ ~ itinerary_feasible rate_south_base historical_rest (historical_halt + 1).
 Proof.
-  split; [unfold d_sep24, d_sep25, d_oct01; split; lia|].
-  apply battle_within_daylight_robust, nominal_admissible.
+  unfold historical_rest, historical_halt.
+  rewrite !itinerary_region by lia.
+  unfold halt_budget; cbn. lia.
 Qed.
 
-(* The return from the battlefield fits inside the York rest. *)
-Theorem return_to_york_fits :
-  leg_fits d_sep25 d_oct01 miles_York_Stamford post_battle_rate.
-Proof. ground. Qed.
-
-(* Every marched leg is tight: none has a spare day at its own rate. *)
-Theorem all_legs_are_tight :
-  travel_days miles_London_York rate_north = leg_days leg1_depart leg1_arrive
-  /\ travel_days miles_London_York post_battle_rate = leg_days leg3a_depart leg3a_arrive
-  /\ travel_days miles_London_Hastings post_battle_rate
-     = leg_days leg3b_depart leg3b_arrive.
-Proof. ground. Qed.
+(* No choice of rest buys a London halt longer than five days. *)
+Theorem london_halt_at_most_five : forall rest halt,
+  0 <= rest -> 0 <= halt -> itinerary_feasible rate_south_base rest halt -> halt <= 5.
+Proof.
+  intros rest halt Hr Hh H. apply itinerary_region in H; [|lia|lia].
+  unfold halt_budget in H.
+  destruct (rest <? 3); [lia|].
+  destruct (rest <? 5) eqn:E5; [lia|]. apply Z.ltb_ge in E5. lia.
+Qed.
 
 (* -----------------------------------------------------------------------------
-   Exact minimum rate for each leg
+   Rates the dated itinerary demands
    -------------------------------------------------------------------------- *)
 
+(* Marching days for the two southward legs at a sustained rate. *)
+Definition south_legs_days (s : Z) : Z :=
+  travel_days miles_London_York s + travel_days miles_London_Hastings s.
+
+(* On the dated itinerary the host needs at least 29 miles a day, and 28 fails. *)
+Theorem itinerary_minimum_rate : forall s, 0 < s ->
+  (south_legs_days s <= leg_days d_oct01 d_oct07 + leg_days d_oct12 d_oct13 <-> 29 <= s).
+Proof.
+  intros s Hs.
+  refine (threshold_antitone south_legs_days
+            (leg_days d_oct01 d_oct07 + leg_days d_oct12 d_oct13) 29 _
+            ltac:(lia) ltac:(ground) ltac:(ground) s Hs).
+  intros s1 s2 H1 H12. unfold south_legs_days.
+  pose proof (travel_days_rate_anti_mono miles_London_York s1 s2 ltac:(ground) H1 H12).
+  pose proof (travel_days_rate_anti_mono miles_London_Hastings s1 s2 ltac:(ground) H1 H12).
+  lia.
+Qed.
+
+(* With the historical rest the plan is feasible iff the base rate reaches 29. *)
+Theorem historical_plan_needs_base_rate : forall base, 0 < base ->
+  (itinerary_feasible base historical_rest historical_halt <-> 29 <= base).
+Proof.
+  intros base Hb. unfold itinerary_feasible, senlac_arrival, london_departure,
+    london_arrival, historical_rest, historical_halt.
+  rewrite (march_rate_full_recovery base 5) by lia.
+  rewrite <- (itinerary_minimum_rate base Hb).
+  unfold south_legs_days, york_departure, leg_days, d_sep25, d_oct01, d_oct07,
+    d_oct12, d_oct13. lia.
+Qed.
+
+Definition leg1_depart : day := d_sep20.
+Definition leg1_arrive : day := d_sep24.
+Definition leg3a_depart : day := d_oct01.
+Definition leg3a_arrive : day := d_oct07.
+Definition leg3b_depart : day := d_oct12.
+Definition leg3b_arrive : day := d_oct13.
+
 Theorem leg1_minimum_rate : forall s, 0 < s ->
-  (leg_fits leg1_depart leg1_arrive miles_London_York s <-> 38 <= s).
+  (leg_fits leg1_depart leg1_arrive miles_London_Tadcaster s <-> 36 <= s).
 Proof.
   intros s Hs. unfold leg_fits, travel_days.
-  apply rate_threshold_iff; [ground | ground | ground | ground | exact Hs].
+  apply rate_threshold_iff; [ground | lia | ground | ground | exact Hs].
 Qed.
 
 Theorem leg3a_minimum_rate : forall s, 0 < s ->
   (leg_fits leg3a_depart leg3a_arrive miles_London_York s <-> 28 <= s).
 Proof.
   intros s Hs. unfold leg_fits, travel_days.
-  apply rate_threshold_iff; [ground | ground | ground | ground | exact Hs].
+  apply rate_threshold_iff; [ground | lia | ground | ground | exact Hs].
 Qed.
 
 Theorem leg3b_minimum_rate : forall s, 0 < s ->
   (leg_fits leg3b_depart leg3b_arrive miles_London_Hastings s <-> 29 <= s).
 Proof.
   intros s Hs. unfold leg_fits, travel_days.
-  apply rate_threshold_iff; [ground | ground | ground | ground | exact Hs].
+  apply rate_threshold_iff; [ground | lia | ground | ground | exact Hs].
 Qed.
 
-(* The derived post-battle rate exactly meets the binding leg. *)
-Theorem post_battle_rate_meets_the_binding_leg :
-  post_battle_rate = 29
-  /\ leg_fits leg3b_depart leg3b_arrive miles_London_Hastings post_battle_rate
-  /\ ~ leg_fits leg3b_depart leg3b_arrive miles_London_Hastings (post_battle_rate - 1).
-Proof.
-  assert (H2 : travel_days miles_London_Hastings 29 = 2) by ground.
-  assert (H3 : travel_days miles_London_Hastings 28 = 3) by ground.
-  assert (Hd : leg_days leg3b_depart leg3b_arrive = 2) by ground.
-  unfold leg_fits. rewrite post_battle_rate_value.
-  replace (29 - 1) with 28 by lia.
-  rewrite H2, H3, Hd. repeat split; lia.
-Qed.
-
-(* =============================================================================
-   Minimum feasible rate over the whole southward march
-   ============================================================================= *)
-
-(* Marching resumes after the battle day and must end on 13 October. *)
-Definition south_window_from (depart : day) : Z := leg_days depart d_oct13.
-
-Definition south_march_fits (depart : day) (rate : Z) : Prop :=
-  travel_days miles_Stamford_Hastings rate <= south_window_from depart.
-
-(* Leaving on 26 September, fifteen miles a day suffices and fourteen does not. *)
-Theorem earliest_departure_minimum_rate : forall s, 0 < s ->
-  (south_march_fits (d_sep25 + 1) s <-> 15 <= s).
-Proof.
-  intros s Hs. unfold south_march_fits, travel_days.
-  apply rate_threshold_iff; [ground | ground | ground | ground | exact Hs].
-Qed.
-
-(* Leaving on the historical date, the exact minimum rises to twenty. *)
-Theorem historical_departure_minimum_rate : forall s, 0 < s ->
-  (south_march_fits d_oct01 s <-> 20 <= s).
-Proof.
-  intros s Hs. unfold south_march_fits, travel_days.
-  apply rate_threshold_iff; [ground | ground | ground | ground | exact Hs].
-Qed.
-
-(* The rate the battle model produces clears the historical requirement. *)
-Theorem derived_rate_clears_historical_requirement :
-  20 <= post_battle_rate /\ south_march_fits d_oct01 post_battle_rate.
-Proof. rewrite post_battle_rate_value. split; [lia | ground]. Qed.
-
-(* =============================================================================
-   Maximum admissible delay at Stamford Bridge
-   ============================================================================= *)
-
-(* Resting k days puts departure on 26 September plus k. *)
-Definition departure_after_rest (k : Z) : day := d_sep25 + 1 + k.
-
-Definition delay_feasible (k : Z) : Prop :=
-  south_march_fits (departure_after_rest k) (march_rate_after k).
-
-Lemma delay_feasible_small : forall k, 0 <= k <= 4 -> delay_feasible k.
-Proof.
-  intros k Hk.
-  assert (Hc : k = 0 \/ k = 1 \/ k = 2 \/ k = 3 \/ k = 4) by lia.
-  destruct Hc as [E|[E|[E|[E|E]]]]; rewrite E; unfold delay_feasible; ground.
-Qed.
-
-Lemma delay_feasible_large : forall k, 5 <= k -> (delay_feasible k <-> k <= 9).
-Proof.
-  intros k Hk.
-  unfold delay_feasible, south_march_fits, south_window_from, leg_days,
-    departure_after_rest.
-  rewrite (march_rate_full_recovery k Hk).
-  assert (H9 : travel_days miles_Stamford_Hastings 29 = 9) by ground.
-  rewrite H9. unfold d_sep25, d_oct13. lia.
-Qed.
-
-(* The army absorbs at most nine days of delay, and ten breaks the campaign. *)
-Theorem maximum_admissible_delay : forall k, 0 <= k -> (delay_feasible k <-> k <= 9).
-Proof.
-  intros k Hk. destruct (Z.le_gt_cases 5 k) as [H5|H5].
-  - apply delay_feasible_large; exact H5.
-  - split; [intros _; lia | intros _; apply delay_feasible_small; lia].
-Qed.
-
-Theorem delay_bound_is_tight : delay_feasible 9 /\ ~ delay_feasible 10.
-Proof.
-  split.
-  - apply (maximum_admissible_delay 9); lia.
-  - intros H. pose proof (proj1 (maximum_admissible_delay 10 ltac:(lia)) H). lia.
-Qed.
+Theorem leg1_fits : leg_fits leg1_depart leg1_arrive miles_London_Tadcaster rate_north.
+Proof. apply leg1_minimum_rate; unfold rate_north; lia. Qed.
 
 (* -----------------------------------------------------------------------------
-   The admissible departure interval
+   News of the landing
    -------------------------------------------------------------------------- *)
 
-Definition min_recovery_days : Z := 1.  (* the army cannot march the battle night *)
+Definition t_william_lands : time := t_of d_sep28 12 0.  (* hour [MODEL] *)
+Definition t_march_south : time := t_of d_oct01 6 0.     (* hour [MODEL] *)
 
-Definition earliest_departure : day := departure_after_rest min_recovery_days.
-Definition latest_departure : day := departure_after_rest 9.
+(* Minutes a rider at the given miles a day needs from Pevensey to York. *)
+Definition news_minutes (miles_per_day : Z) : Z :=
+  ceil_div (miles_Pevensey_York * minutes_per_day) miles_per_day.
 
-Theorem departure_window_is_an_interval :
-  earliest_departure < latest_departure
-  /\ forall k, min_recovery_days <= k <= 9 ->
-     earliest_departure <= departure_after_rest k <= latest_departure.
+(* The march south answers the landing only if news ran at least 94 miles a day. *)
+Theorem news_minimum_rate : forall v, 0 < v ->
+  (t_william_lands + news_minutes v <= t_march_south <-> 94 <= v).
 Proof.
-  unfold earliest_departure, latest_departure, departure_after_rest,
-    min_recovery_days, d_sep25.
-  split; [lia | intros k Hk; split; lia].
+  intros v Hv.
+  assert (Hd : t_march_south - t_william_lands = 3960) by ground.
+  assert (Hiff : news_minutes v <= 3960 <-> 94 <= v).
+  { unfold news_minutes. apply rate_threshold_iff; [ground | lia | ground | ground | exact Hv]. }
+  rewrite <- Hiff. lia.
 Qed.
-
-(* Harold left York on 1 October, strictly inside the admissible window [JW]. *)
-Theorem historical_departure_strictly_inside :
-  earliest_departure < d_oct01 < latest_departure.
-Proof.
-  unfold earliest_departure, latest_departure, departure_after_rest,
-    min_recovery_days, d_sep25, d_oct01. split; lia.
-Qed.
-
-Theorem historical_departure_feasible : delay_feasible 5.
-Proof. apply (maximum_admissible_delay 5); lia. Qed.
 
 (* =============================================================================
    Supply
    ============================================================================= *)
 
-(* The host carried a week of rations and drew the rest from the shires [JW]. *)
+(* A week of rations carried and the rest requisitioned from the shires [MODEL]. *)
 Definition rations_carried : Z := 7.
 Definition resupply_capacity : Z := 12000.
 
@@ -1445,7 +1650,6 @@ Definition supply_remaining (n d : Z) : Z :=
 
 Definition non_starving (n d : Z) : Prop := 0 < supply_remaining n d.
 
-(* A force living inside the requisition capacity never draws down its stock. *)
 Theorem supply_holds_below_capacity : forall n d,
   0 < n <= resupply_capacity -> 0 <= d -> non_starving n d.
 Proof.
@@ -1453,7 +1657,6 @@ Proof.
   rewrite Z.min_r by lia. lia.
 Qed.
 
-(* Above capacity the stock falls linearly in the shortfall. *)
 Lemma supply_above_capacity : forall n d,
   resupply_capacity <= n ->
   supply_remaining n d = rations_carried * n - (n - resupply_capacity) * d.
@@ -1461,7 +1664,6 @@ Proof.
   intros n d H. unfold supply_remaining. rewrite Z.min_l by lia. lia.
 Qed.
 
-(* The whole English range feeds itself for the whole campaign. *)
 Theorem supply_holds_across_english_range : forall e d,
   english_in_range e -> 0 <= d <= campaign_days -> non_starving e d.
 Proof.
@@ -1475,7 +1677,6 @@ Proof.
     unfold rations_carried, resupply_capacity in *. lia.
 Qed.
 
-(* The Norse range likewise, at the same capacity. *)
 Theorem supply_holds_across_norse_range : forall n d,
   norse_in_range n -> 0 <= d <= campaign_days -> non_starving n d.
 Proof.
@@ -1483,7 +1684,7 @@ Proof.
   apply supply_holds_below_capacity; [unfold resupply_capacity; lia | lia].
 Qed.
 
-(* The exact largest host the campaign feeds for its whole length. *)
+(* The largest host the campaign feeds for its whole length. *)
 Theorem supply_capacity_boundary :
   non_starving 16941 campaign_days /\ ~ non_starving 16942 campaign_days.
 Proof.
@@ -1495,33 +1696,18 @@ Theorem supply_boundary_exceeds_every_estimate :
   english_total_high < 16941 /\ norse_total_high < 16941.
 Proof. unfold english_total_high, norse_total_high; split; lia. Qed.
 
-(* Rate does not change the supply verdict across the admissible band. *)
-Theorem supply_holds_across_rates : forall e s,
-  english_in_range e -> 15 <= s <= 45 ->
-  non_starving e (travel_days miles_Stamford_Hastings s).
-Proof.
-  intros e s He Hs.
-  apply supply_holds_across_english_range; [exact He|].
-  split.
-  - apply ceil_div_nonneg; [ground | lia].
-  - rewrite campaign_days_value.
-    transitivity (travel_days miles_Stamford_Hastings 15).
-    + apply travel_days_rate_anti_mono; [ground | lia | lia].
-    + ground.
-Qed.
-
 (* =============================================================================
    Chronology
    ============================================================================= *)
 
 Inductive event_name :=
   | Landing
-  | FulfordBattle
   | MarchNorthBegins
+  | FulfordBattle
   | YorkTaken
-  | YorkArrive
+  | TadcasterArrive
   | ApproachStart
-  | MarchNorthEnds
+  | Contact
   | BridgeDefenseBegins
   | StamfordBattleBegins
   | HardradaFalls
@@ -1541,25 +1727,20 @@ Record event := {
   e_actor : actor
 }.
 
-Definition before (e1 e2 : event) : Prop := e_time e1 < e_time e2.
-
-Lemma before_trans : forall a b c, before a b -> before b c -> before a c.
-Proof. unfold before; intros; lia. Qed.
-
 Record timeline := {
   t_landing : time;
+  t_london_depart : time;
   t_fulford : time;
   t_york_taken : time;
-  t_london_depart : time;
-  t_york_arrive : time;
+  t_tadcaster_arrive : time;
   t_approach_start : time;
-  t_approach_end : time;
+  t_contact : time;
   t_bridge_defense : time;
   t_stamford_start : time;
   t_hardrada_fall : time;
   t_stamford_end : time;
   t_recovery : time;
-  t_william_lands : time;
+  t_william_lands_at : time;
   t_march_south_start : time;
   t_london_arrive : time;
   t_london_depart_south : time;
@@ -1567,23 +1748,24 @@ Record timeline := {
   t_hastings_end : time
 }.
 
+(* The causal order the narrative fixes; a partial order on the events. *)
 Record chronology (T : timeline) : Prop := {
   landing_before_fulford : t_landing T < t_fulford T;
   landing_before_london_depart : t_landing T < t_london_depart T;
   fulford_before_york_taken : t_fulford T < t_york_taken T;
-  london_depart_before_york_arrive : t_london_depart T < t_york_arrive T;
+  london_depart_before_tadcaster : t_london_depart T < t_tadcaster_arrive T;
   york_taken_before_approach : t_york_taken T <= t_approach_start T;
-  york_arrive_before_approach : t_york_arrive T <= t_approach_start T;
-  approach_start_before_end : t_approach_start T < t_approach_end T;
-  approach_end_before_bridge : t_approach_end T <= t_bridge_defense T;
+  tadcaster_before_approach : t_tadcaster_arrive T <= t_approach_start T;
+  approach_before_contact : t_approach_start T < t_contact T;
+  contact_before_bridge : t_contact T <= t_bridge_defense T;
   bridge_before_stamford : t_bridge_defense T <= t_stamford_start T;
   stamford_start_before_end : t_stamford_start T < t_stamford_end T;
   hardrada_falls_after_start : t_stamford_start T <= t_hardrada_fall T;
   hardrada_falls_before_end : t_hardrada_fall T <= t_stamford_end T;
   stamford_end_before_recovery : t_stamford_end T <= t_recovery T;
-  stamford_end_before_william : t_stamford_end T < t_william_lands T;
+  stamford_end_before_william : t_stamford_end T < t_william_lands_at T;
   recovery_before_march_south : t_recovery T <= t_march_south_start T;
-  william_before_march_south : t_william_lands T < t_march_south_start T;
+  william_before_march_south : t_william_lands_at T < t_march_south_start T;
   march_south_before_london : t_march_south_start T < t_london_arrive T;
   london_arrive_before_depart : t_london_arrive T < t_london_depart_south T;
   london_depart_before_hastings : t_london_depart_south T < t_hastings_start T;
@@ -1605,276 +1787,160 @@ Definition sorted_by_time (evs : list event) : Prop :=
   | e :: rs => sorted_by_time_from e rs
   end.
 
+Definition events_of (T : timeline) : list event :=
+  [ {| e_name := Landing; e_time := t_landing T;
+       e_loc := Riccall; e_actor := NorwegianHost |};
+    {| e_name := MarchNorthBegins; e_time := t_london_depart T;
+       e_loc := London; e_actor := EnglishHost |};
+    {| e_name := FulfordBattle; e_time := t_fulford T;
+       e_loc := Fulford; e_actor := NorwegianHost |};
+    {| e_name := YorkTaken; e_time := t_york_taken T;
+       e_loc := York; e_actor := NorwegianHost |};
+    {| e_name := TadcasterArrive; e_time := t_tadcaster_arrive T;
+       e_loc := Tadcaster; e_actor := EnglishHost |};
+    {| e_name := ApproachStart; e_time := t_approach_start T;
+       e_loc := Tadcaster; e_actor := EnglishHost |};
+    {| e_name := Contact; e_time := t_contact T;
+       e_loc := StamfordBridge; e_actor := EnglishHost |};
+    {| e_name := BridgeDefenseBegins; e_time := t_bridge_defense T;
+       e_loc := StamfordBridge; e_actor := NorwegianHost |};
+    {| e_name := StamfordBattleBegins; e_time := t_stamford_start T;
+       e_loc := StamfordBridge; e_actor := EnglishHost |};
+    {| e_name := HardradaFalls; e_time := t_hardrada_fall T;
+       e_loc := StamfordBridge; e_actor := Hardrada |};
+    {| e_name := StamfordBattleEnds; e_time := t_stamford_end T;
+       e_loc := StamfordBridge; e_actor := EnglishHost |};
+    {| e_name := EnglishRecovery; e_time := t_recovery T;
+       e_loc := StamfordBridge; e_actor := Harold |};
+    {| e_name := WilliamLands; e_time := t_william_lands_at T;
+       e_loc := Pevensey; e_actor := William |};
+    {| e_name := MarchSouthBegins; e_time := t_march_south_start T;
+       e_loc := York; e_actor := EnglishHost |};
+    {| e_name := LondonArrive; e_time := t_london_arrive T;
+       e_loc := London; e_actor := EnglishHost |};
+    {| e_name := LondonDepart; e_time := t_london_depart_south T;
+       e_loc := London; e_actor := EnglishHost |};
+    {| e_name := HastingsBattleBegins; e_time := t_hastings_start T;
+       e_loc := Hastings; e_actor := EnglishHost |};
+    {| e_name := HastingsBattleEnds; e_time := t_hastings_end T;
+       e_loc := Hastings; e_actor := EnglishHost |}
+  ].
+
+(* The listed order is a linear extension of the chronology once the three pairs it
+   leaves unordered are fixed. *)
+Theorem chronology_orders_events : forall T,
+  chronology T ->
+  t_london_depart T <= t_fulford T ->
+  t_york_taken T <= t_tadcaster_arrive T ->
+  t_recovery T <= t_william_lands_at T ->
+  sorted_by_time (events_of T).
+Proof.
+  intros T Hc H1 H2 H3. destruct Hc. simpl. repeat split; lia.
+Qed.
+
 (* =============================================================================
    The historical timeline
    ============================================================================= *)
 
-Definition hastings_duration : Z := 9 * minutes_per_hour.  (* dawn to dusk [ASC-D] *)
-
-(* Every field is dated from a source; none is fitted to make a proof pass. *)
 Definition T_historical : timeline := {|
-  t_landing := t_of d_sep18 12 0;             (* fleet beaches at Riccall [ASC-C] *)
-  t_fulford := t_of d_sep20 9 0;              (* Battle of Fulford [ASC-C] *)
-  t_york_taken := t_of d_sep24 12 0;          (* York gives hostages [ASC-C] *)
-  t_london_depart := t_of d_sep20 6 0;        (* Harold quits London [ASC-C] *)
-  t_york_arrive := t_of d_sep24 18 0;         (* Harold reaches Tadcaster [ASC-C] *)
-  t_approach_start := t_of d_sep25 6 0;       (* march through York at dawn [ASC-D] *)
-  t_approach_end := b0 nominal;               (* contact west of the Derwent *)
-  t_bridge_defense := b1 nominal;             (* the axeman takes the span [ASC-C] *)
+  t_landing := t_of d_sep18 12 0;             (* fleet beaches at Riccall [RECON] *)
+  t_london_depart := t_of d_sep20 6 0;        (* Harold quits London [RECON] *)
+  t_fulford := t_of d_sep20 9 0;              (* Fulford [JW]; hour [MODEL] *)
+  t_york_taken := t_of d_sep24 12 0;          (* York gives hostages [ASC-C]; date [RECON] *)
+  t_tadcaster_arrive := t_of d_sep24 18 0;    (* Harold at Tadcaster [ASC-C]; hour [MODEL] *)
+  t_approach_start := t_sep25_first_light;    (* the march through York [ASC-C] *)
+  t_contact := b0 nominal;                    (* contact west of the Derwent *)
+  t_bridge_defense := b1 nominal;             (* the Norseman takes the span [ASC-C+] *)
   t_stamford_start := b3 nominal;             (* the shield walls meet [HEIM] *)
-  t_hardrada_fall := b4 nominal;              (* Hardrada killed by an arrow [HEIM] *)
-  t_stamford_end := b5 nominal;               (* the pursuit ends at the ships [HEIM] *)
-  t_recovery := t_sep25_evening;              (* the English hold the field *)
-  t_william_lands := t_of d_sep28 12 0;       (* Normans land at Pevensey [ASC-D] *)
-  t_march_south_start := t_of d_oct01 6 0;    (* Harold quits York [JW] *)
-  t_london_arrive := t_of d_oct07 18 0;       (* Harold reaches London [JW] *)
-  t_london_depart_south := t_of d_oct12 6 0;  (* Harold quits London [JW] *)
-  t_hastings_start := t_oct14_morning;        (* Battle of Hastings opens [ASC-D] *)
-  t_hastings_end := t_oct14_morning + hastings_duration
+  t_hardrada_fall := b4 nominal;              (* Hardrada, an arrow in the throat [HEIM] *)
+  t_stamford_end := b5 nominal;               (* the pursuit ends *)
+  t_recovery := t_sep25_sunset;               (* the English hold the field *)
+  t_william_lands_at := t_william_lands;      (* Normans at Pevensey [ASC-D] *)
+  t_march_south_start := t_march_south;       (* Harold quits York [RECON] *)
+  t_london_arrive := t_of d_oct07 18 0;       (* Harold reaches London [RECON] *)
+  t_london_depart_south := t_of d_oct12 6 0;  (* Harold quits London [RECON] *)
+  t_hastings_start := t_of d_oct14 9 0;       (* from the third hour [JW] *)
+  t_hastings_end := t_oct14_sunset            (* until dusk [JW] *)
 |}.
 
 Theorem chronology_T_historical : chronology T_historical.
 Proof. constructor; ground. Qed.
 
-Definition events_historical : list event :=
-  [ {| e_name := Landing; e_time := t_landing T_historical;
-       e_loc := Riccall; e_actor := NorwegianHost |};
-    {| e_name := MarchNorthBegins; e_time := t_london_depart T_historical;
-       e_loc := London; e_actor := EnglishHost |};
-    {| e_name := FulfordBattle; e_time := t_fulford T_historical;
-       e_loc := Fulford; e_actor := NorwegianHost |};
-    {| e_name := YorkTaken; e_time := t_york_taken T_historical;
-       e_loc := York; e_actor := NorwegianHost |};
-    {| e_name := YorkArrive; e_time := t_york_arrive T_historical;
-       e_loc := Tadcaster; e_actor := EnglishHost |};
-    {| e_name := ApproachStart; e_time := t_approach_start T_historical;
-       e_loc := York; e_actor := EnglishHost |};
-    {| e_name := MarchNorthEnds; e_time := t_approach_end T_historical;
-       e_loc := StamfordBridge; e_actor := EnglishHost |};
-    {| e_name := BridgeDefenseBegins; e_time := t_bridge_defense T_historical;
-       e_loc := Derwent; e_actor := NorwegianHost |};
-    {| e_name := StamfordBattleBegins; e_time := t_stamford_start T_historical;
-       e_loc := StamfordBridge; e_actor := EnglishHost |};
-    {| e_name := HardradaFalls; e_time := t_hardrada_fall T_historical;
-       e_loc := StamfordBridge; e_actor := Hardrada |};
-    {| e_name := StamfordBattleEnds; e_time := t_stamford_end T_historical;
-       e_loc := StamfordBridge; e_actor := EnglishHost |};
-    {| e_name := EnglishRecovery; e_time := t_recovery T_historical;
-       e_loc := StamfordBridge; e_actor := Harold |};
-    {| e_name := WilliamLands; e_time := t_william_lands T_historical;
-       e_loc := Hastings; e_actor := William |};
-    {| e_name := MarchSouthBegins; e_time := t_march_south_start T_historical;
-       e_loc := York; e_actor := EnglishHost |};
-    {| e_name := LondonArrive; e_time := t_london_arrive T_historical;
-       e_loc := London; e_actor := EnglishHost |};
-    {| e_name := LondonDepart; e_time := t_london_depart_south T_historical;
-       e_loc := London; e_actor := EnglishHost |};
-    {| e_name := HastingsBattleBegins; e_time := t_hastings_start T_historical;
-       e_loc := Hastings; e_actor := EnglishHost |};
-    {| e_name := HastingsBattleEnds; e_time := t_hastings_end T_historical;
-       e_loc := Hastings; e_actor := EnglishHost |}
-  ].
+Definition events_historical : list event := events_of T_historical.
 
 Theorem events_historical_sorted : sorted_by_time events_historical.
+Proof.
+  apply chronology_orders_events; [exact chronology_T_historical | ground | ground | ground].
+Qed.
+
+(* The dated days of the timeline are the days of the itinerary model. *)
+Theorem timeline_matches_itinerary :
+  t_march_south_start T_historical / minutes_per_day
+    = york_departure historical_rest
+  /\ t_london_arrive T_historical / minutes_per_day
+    = london_arrival rate_south_base historical_rest
+  /\ t_london_depart_south T_historical / minutes_per_day
+    = london_departure rate_south_base historical_rest historical_halt.
 Proof. ground. Qed.
 
-(* The battle sits inside the daylight of its own day. *)
 Theorem historical_battle_in_daylight :
   in_sep25_daylight (t_stamford_start T_historical)
   /\ in_sep25_daylight (t_stamford_end T_historical).
 Proof. ground. Qed.
 
-(* The southward march begins only after news of Pevensey could reach York. *)
-Theorem march_south_answers_pevensey :
-  t_william_lands T_historical < t_march_south_start T_historical
-  /\ duration (t_william_lands T_historical) (t_march_south_start T_historical)
-     / minutes_per_day = 2.
-Proof. ground. Qed.
-
-(* The whole southward march fits between the two dated endpoints. *)
-Theorem historical_march_south_fits :
-  leg_fits d_oct01 d_oct13 miles_Stamford_Hastings post_battle_rate.
-Proof. ground. Qed.
-
-(* =============================================================================
-   Casualty-rate cross-check
-   ============================================================================= *)
-
-(* A coarse rate table, independent of the effectiveness model, as a sanity bound. *)
-Definition casualties_in_phase (S : schedule) (rate : phase -> Z) (p : phase) : Z :=
-  rate p * phase_duration S p / minutes_per_hour.
-
-Definition casualties_total (S : schedule) (rate : phase -> Z) : Z :=
-  casualties_in_phase S rate Approach + casualties_in_phase S rate BridgeDefender
-  + casualties_in_phase S rate BridgeHold + casualties_in_phase S rate ShieldWall
-  + casualties_in_phase S rate Rout.
-
-(* Any hourly rate the sources admit; the bound below quantifies over all of them. *)
-Definition rate_cap : Z := 500.
-
-Definition rate_admissible (rate : phase -> Z) : Prop :=
-  forall p, 0 <= rate p <= rate_cap.
-
-Lemma casualties_in_phase_bounded : forall rate p,
-  rate_admissible rate ->
-  casualties_in_phase nominal rate p
-  <= casualties_in_phase nominal (fun _ => rate_cap) p.
-Proof.
-  intros rate p Hr. unfold casualties_in_phase.
-  apply Z.div_le_mono; [unfold minutes_per_hour; lia|].
-  apply Z.mul_le_mono_nonneg_r; [destruct p; ground | apply Hr].
-Qed.
-
-(* Largest total any admissible rate table can produce. *)
-Definition casualty_ceiling : Z := casualties_total nominal (fun _ => rate_cap).
-
-Lemma casualty_ceiling_value : casualty_ceiling = 4000.
-Proof. ground. Qed.
-
-Lemma casualties_below_ceiling : forall rate,
-  rate_admissible rate -> casualties_total nominal rate <= casualty_ceiling.
-Proof.
-  intros rate Hr. unfold casualty_ceiling, casualties_total.
-  pose proof (casualties_in_phase_bounded rate Approach Hr).
-  pose proof (casualties_in_phase_bounded rate BridgeDefender Hr).
-  pose proof (casualties_in_phase_bounded rate BridgeHold Hr).
-  pose proof (casualties_in_phase_bounded rate ShieldWall Hr).
-  pose proof (casualties_in_phase_bounded rate Rout Hr).
-  lia.
-Qed.
-
-(* Both sides are quantified: any admissible rate table, any host above the ceiling. *)
-Theorem casualties_bounded_general : forall rate pop,
-  rate_admissible rate -> casualty_ceiling < pop -> casualties_total nominal rate < pop.
-Proof.
-  intros rate pop Hr Hpop. pose proof (casualties_below_ceiling rate Hr). lia.
-Qed.
-
-Corollary casualties_bounded_english : forall rate pop,
-  rate_admissible rate -> english_total_low <= pop -> casualties_total nominal rate < pop.
-Proof.
-  intros rate pop Hr Hpop. apply casualties_bounded_general; [exact Hr|].
-  rewrite casualty_ceiling_value. unfold english_total_low in Hpop. lia.
-Qed.
-
-Corollary casualties_bounded_norse : forall rate pop,
-  rate_admissible rate -> norse_total_low <= pop -> casualties_total nominal rate < pop.
-Proof.
-  intros rate pop Hr Hpop. apply casualties_bounded_general; [exact Hr|].
-  rewrite casualty_ceiling_value. unfold norse_total_low in Hpop. lia.
-Qed.
-
-(* Reference rates read off the narrative sources, both inside the cap [HEIM], [ASC-C]. *)
-Definition rate_english (p : phase) : Z :=
-  match p with
-  | Approach => 30 | BridgeDefender => 6 | BridgeHold => 80
-  | ShieldWall => 150 | Rout => 70
-  end.
-
-Definition rate_norse (p : phase) : Z :=
-  match p with
-  | Approach => 50 | BridgeDefender => 6 | BridgeHold => 120
-  | ShieldWall => 200 | Rout => 300
-  end.
-
-Lemma rate_english_admissible : rate_admissible rate_english.
-Proof. intros p; destruct p; cbv [rate_english rate_cap]; split; lia. Qed.
-
-Lemma rate_norse_admissible : rate_admissible rate_norse.
-Proof. intros p; destruct p; cbv [rate_norse rate_cap]; split; lia. Qed.
-
 (* =============================================================================
    Computed values
    ============================================================================= *)
 
+Example v_dist_london_tadcaster : miles_London_Tadcaster = 180.
+Proof. ground. Qed.
+
 Example v_dist_london_york : miles_London_York = 190.
 Proof. ground. Qed.
 
-Example v_dist_york_stamford : miles_York_Stamford = 10.
+Example v_dist_tadcaster_stamford : miles_Tadcaster_Stamford = 18.
 Proof. ground. Qed.
 
-Example v_dist_london_hastings : miles_London_Hastings = 58.
+Example v_dist_stamford_hastings : miles_Stamford_Hastings = 256.
 Proof. ground. Qed.
 
-Example v_dist_stamford_hastings : miles_Stamford_Hastings = 258.
+Example v_dist_stamford_riccall : miles_Stamford_Riccall = 13.
 Proof. ground. Qed.
 
-Example v_dist_york_hastings : miles_York_Hastings = 248.
-Proof. ground. Qed.
-
-Example v_dist_stamford_riccall : miles_Stamford_Riccall = 12.
-Proof. ground. Qed.
-
-Example v_dist_london_stamford : dist London StamfordBridge = 200.
-Proof. ground. Qed.
-
-Example v_route_full : path_distance route_full = 458.
+Example v_dist_pevensey_york : miles_Pevensey_York = 258.
 Proof. ground. Qed.
 
 Example v_bridge_frontage : frontage bridge_width_cm = 4.
 Proof. ground. Qed.
 
-Example v_bulk_rate : bulk_crossing_rate = 12.
+Example v_withdrawal_window : withdrawal_window nominal = 90.
 Proof. ground. Qed.
 
-Example v_withdrawal_window : withdrawal_window nominal = 150.
+Example v_west_after_defender : force_total (nw_after_defender nominal) = 2963.
 Proof. ground. Qed.
 
-Example v_west_withdrawn : west_withdrawn_count = 1800.
+Example v_west_withdrawn : west_withdrawn_count nominal = 1080.
 Proof. ground. Qed.
 
-Example v_west_remnant : force_total west_remnant = 1126.
+Example v_norse_shieldwall : force_total (norse_shieldwall nominal) = 4078.
 Proof. ground. Qed.
 
-Example v_norse_shieldwall : force_total norse_shieldwall = 7799.
+Example v_norse_after_wall : force_total norse_after_wall = 3035.
 Proof. ground. Qed.
 
-Example v_norse_after_wall : force_total norse_after_wall = 7435.
+Example v_english_after_wall : force_total eng_after_wall = 9665.
 Proof. ground. Qed.
 
-Example v_english_after_wall : force_total eng_after_wall = 10683.
+Example v_escape_window : escape_window_with pursuit_delay = 21.
 Proof. ground. Qed.
 
-Example v_english_after_rout : force_total eng_after_rout = 10647.
+Example v_norse_survivors : norse_survivors = 990.
 Proof. ground. Qed.
 
-Example v_effectiveness_english : english_eff_at_wall = 59243.
+Example v_norse_losses : norse_losses_total = 8010.
 Proof. ground. Qed.
 
-Example v_effectiveness_norse_led : norse_eff_led = 46175.
-Proof. ground. Qed.
-
-Example v_effectiveness_norse_leaderless : norse_eff_leaderless = 27705.
-Proof. ground. Qed.
-
-Example v_escape_head_start : escape_head_start = 36.
-Proof. ground. Qed.
-
-Example v_escape_window : escape_window = 24.
-Proof. ground. Qed.
-
-Example v_norse_escaped : norse_escaped = 960.
-Proof. ground. Qed.
-
-Example v_norse_losses : norse_losses_total = 8040.
-Proof. ground. Qed.
-
-Example v_english_losses : english_losses_total = 353.
-Proof. ground. Qed.
-
-Example v_post_battle_rate : post_battle_rate = 29.
-Proof. apply post_battle_rate_value. Qed.
-
-Example v_unrested_rate : march_rate_after 0 = 20.
-Proof. ground. Qed.
-
-Example v_casualties_english_table : casualties_total nominal rate_english = 686.
-Proof. ground. Qed.
-
-Example v_casualties_norse_table : casualties_total nominal rate_norse = 1251.
-Proof. ground. Qed.
-
-Example v_campaign_days : campaign_days = 24.
+Example v_english_losses : english_losses_total = 1406.
 Proof. ground. Qed.
 
 Example v_supply_at_point_estimate : supply_remaining 11000 campaign_days = 77000.
@@ -1884,73 +1950,88 @@ Proof. ground. Qed.
    Headline results
    ============================================================================= *)
 
-(* The bridge stand is a consequence of the span's width and an axe's reach. *)
+(* The bridge stand follows from the span's width and an axe's reach. *)
 Theorem headline_bridge_geometry :
   span_blocked 1 bridge_width_cm
   /\ crossing_rate_at bridge_width_cm 1 = 0
   /\ crossing_rate_at bridge_width_cm 0 = bulk_crossing_rate
-  /\ ~ span_blocked 1 (bridge_width_cm + man_width_cm).
+  /\ ~ span_blocked 1 (bridge_width_cm + man_width_cm)
+  /\ (forall S, sched_admissible S ->
+      bulk_crossing_rate * withdrawal_window S < force_total (nw_after_defender S)).
 Proof.
   split; [apply lone_axeman_blocks_bridge|].
   split; [apply lone_axeman_stops_the_crossing|].
-  split; [apply cleared_span_runs_at_ceiling | apply lone_axeman_bound_is_tight].
+  split; [apply cleared_span_runs_at_ceiling|].
+  split; [apply lone_axeman_bound_is_tight | apply bridge_caps_the_withdrawal_robust].
 Qed.
 
-(* The Norwegian break is caused by the ratio crossing its threshold. *)
+(* The narrative at the ring holds for exactly one interval of break thresholds. *)
 Theorem headline_rout :
-  ~ routs norse_eff_led english_eff_at_wall
-  /\ routs norse_eff_leaderless english_eff_at_wall.
+  (forall q, narrative_at q norse_eff_led norse_eff_leaderless english_eff_at_wall
+             <-> 281 <= q <= 467)
+  /\ (forall pct, 0 <= pct <= 100 ->
+      (breaks rout_q (norse_eff_leaderless_with wall_div_norse pct) english_eff_at_wall
+       <-> pct <= 74)).
+Proof. split; [apply rout_threshold_band | apply leaderless_share_band]. Qed.
+
+(* Heavy English losses and the narrative hold across both shield-ring divisor bands. *)
+Theorem headline_battle_robustness :
+  (forall de, 1424 <= de <= 4551 ->
+     english_heavy_low <= english_losses_with de wall_div_norse <= english_heavy_high
+     /\ narrative_at rout_q (norse_eff_led_with wall_div_norse)
+          (norse_eff_leaderless_with wall_div_norse leaderless_pct)
+          (english_eff_at_wall_with de))
+  /\ (forall dn, 6072 <= dn <= 38072 ->
+     english_heavy_low <= english_losses_with wall_div_english dn <= english_heavy_high
+     /\ narrative_at rout_q (norse_eff_led_with dn)
+          (norse_eff_leaderless_with dn leaderless_pct)
+          (english_eff_at_wall_with wall_div_english)).
 Proof.
-  split; [apply no_rout_while_hardrada_stands | apply rout_follows_hardradas_fall].
+  split; intros x Hx; apply battle_outcome_ok_spec;
+    [apply battle_robust_in_english_divisor | apply battle_robust_in_norse_divisor]; exact Hx.
 Qed.
 
-(* Four fifths of the Norwegian army is lost, across the whole pursuit band. *)
+(* Four fifths of the army is lost, and the twenty-four ships pin the pursuit. *)
 Theorem headline_norse_annihilation :
   8 * force_total norse_force <= 10 * norse_losses_total
-  /\ (forall fr, 1 <= fr <= 9 ->
-      8 * force_total norse_force <= 10 * (force_total norse_force - escaped_with fr))
-  /\ ships_for norse_escaped ship_capacity_high <= ships_reported
-     <= ships_for norse_escaped ship_capacity_low.
+  /\ ships_bracket norse_survivors
+  /\ (forall men, ships_bracket men <-> 691 <= men <= 1200)
+  /\ (forall fr, 0 <= fr <= 10 ->
+      (ships_bracket (survivors_with fr pursuit_delay) <-> 4 <= fr <= 6)).
 Proof.
   split; [apply norse_losses_exceed_four_fifths|].
-  split; [apply norse_losses_robust_in_flight_rate
-         | apply reported_ships_within_model_bracket].
+  split; [apply reported_ships_within_model_bracket|].
+  split; [apply ships_bracket_iff | apply ships_fix_the_flight_rate].
 Qed.
 
-(* Each marched leg fits its own dated window, and the first has no slack. *)
-Theorem headline_leg_containment :
-  leg_fits leg1_depart leg1_arrive miles_London_York rate_north
-  /\ leg_fits leg3a_depart leg3a_arrive miles_London_York post_battle_rate
-  /\ leg_fits leg3b_depart leg3b_arrive miles_London_Hastings post_battle_rate
-  /\ travel_days miles_London_York rate_north = leg_days leg1_depart leg1_arrive.
+(* With the London halt the historical plan has no spare day, and needs 29 miles a day. *)
+Theorem headline_itinerary :
+  (forall rest halt, 0 <= rest -> 0 <= halt ->
+     (itinerary_feasible rate_south_base rest halt <-> halt <= halt_budget rest))
+  /\ ~ itinerary_feasible rate_south_base (historical_rest + 1) historical_halt
+  /\ ~ itinerary_feasible rate_south_base historical_rest (historical_halt + 1)
+  /\ (forall base, 0 < base ->
+      (itinerary_feasible base historical_rest historical_halt <-> 29 <= base)).
 Proof.
-  split; [apply leg1_fits|].
-  split; [apply leg3a_fits|].
-  split; [apply leg3b_fits | apply all_legs_are_tight].
+  split; [apply itinerary_region|].
+  destruct historical_itinerary_has_no_slack as [_ [H1 H2]].
+  split; [exact H1|]. split; [exact H2 | apply historical_plan_needs_base_rate].
 Qed.
 
-(* Exact minimum rates, each an iff rather than a pair of point checks. *)
+(* Exact minimum rates the dated legs, the approach and the news of Pevensey demand. *)
 Theorem headline_rate_thresholds :
-  (forall s, 0 < s -> (leg_fits leg1_depart leg1_arrive miles_London_York s <-> 38 <= s))
-  /\ (forall s, 0 < s -> (south_march_fits (d_sep25 + 1) s <-> 15 <= s))
-  /\ (forall s, 0 < s -> (south_march_fits d_oct01 s <-> 20 <= s)).
+  (forall s, 0 < s -> (leg_fits leg1_depart leg1_arrive miles_London_Tadcaster s <-> 36 <= s))
+  /\ (forall s, 0 < s -> (leg_fits leg3a_depart leg3a_arrive miles_London_York s <-> 28 <= s))
+  /\ (forall s, 0 < s -> (leg_fits leg3b_depart leg3b_arrive miles_London_Hastings s <-> 29 <= s))
+  /\ (forall v, 0 < v -> (approach_arrives_by v (b0 nominal) <-> 4 <= v))
+  /\ (forall v, 0 < v -> (t_william_lands + news_minutes v <= t_march_south <-> 94 <= v)).
 Proof.
   split; [apply leg1_minimum_rate|].
-  split; [apply earliest_departure_minimum_rate | apply historical_departure_minimum_rate].
+  split; [apply leg3a_minimum_rate|].
+  split; [apply leg3b_minimum_rate|].
+  split; [apply approach_pace_nominal | apply news_minimum_rate].
 Qed.
 
-(* The army absorbs exactly nine days of delay, and the historical rest sits inside. *)
-Theorem headline_delay_bound :
-  (forall k, 0 <= k -> (delay_feasible k <-> k <= 9))
-  /\ delay_feasible 9 /\ ~ delay_feasible 10
-  /\ earliest_departure < d_oct01 < latest_departure.
-Proof.
-  split; [apply maximum_admissible_delay|].
-  split; [exact (proj1 delay_bound_is_tight)|].
-  split; [exact (proj2 delay_bound_is_tight) | apply historical_departure_strictly_inside].
-Qed.
-
-(* Numerical superiority holds exactly when the English total clears the Norse maximum. *)
 Theorem headline_superiority :
   (forall e, english_in_range e ->
      ((forall n, norse_in_range n -> n < e) <-> norse_total_high < e))
@@ -1959,7 +2040,6 @@ Proof.
   split; [apply english_superiority_exact | apply english_superiority_not_universal].
 Qed.
 
-(* The campaign feeds every admissible host for its whole length. *)
 Theorem headline_supply :
   (forall e d, english_in_range e -> 0 <= d <= campaign_days -> non_starving e d)
   /\ (forall n d, norse_in_range n -> 0 <= d <= campaign_days -> non_starving n d)
@@ -1969,26 +2049,25 @@ Proof.
   split; [apply supply_holds_across_norse_range | exact (proj2 supply_capacity_boundary)].
 Qed.
 
-(* The dated reconstruction is a chronology, is sorted, and fits its window. *)
 Theorem headline_historical_timeline :
   chronology T_historical
   /\ sorted_by_time events_historical
-  /\ leg_fits d_oct01 d_oct13 miles_Stamford_Hastings post_battle_rate.
+  /\ senlac_arrival rate_south_base historical_rest historical_halt = d_oct13.
 Proof.
   split; [apply chronology_T_historical|].
-  split; [apply events_historical_sorted | apply historical_march_south_fits].
+  split; [apply events_historical_sorted | ground].
 Qed.
 
-(* Phase timing conclusions hold across the whole half-hour uncertainty band. *)
 Theorem headline_schedule_robustness :
   sched_admissible nominal
   /\ (forall S p, sched_admissible S ->
       in_sep25_daylight (phase_start S p) /\ in_sep25_daylight (phase_end S p))
-  /\ (forall S, sched_admissible S ->
-      bulk_crossing_rate * withdrawal_window S < force_total nw_after_defender).
+  /\ (forall S, sched_admissible S -> approach_arrives_by 5 (b0 S))
+  /\ (exists S, sched_admissible S /\ ~ approach_arrives_by 4 (b0 S)).
 Proof.
   split; [apply nominal_admissible|].
-  split; [apply every_phase_within_daylight_robust | apply bridge_caps_the_withdrawal_robust].
+  split; [apply every_phase_within_daylight_robust|].
+  split; [apply approach_pace_robust | apply approach_pace_robust_is_tight].
 Qed.
 
 (* =============================================================================
